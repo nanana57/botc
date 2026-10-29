@@ -5,14 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Blood on the Clocktower Online</title>
   
-  <!-- Chargement de Tailwind CSS -->
+  <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   
-  <!-- Chargement de React 18 & ReactDOM -->
+  <!-- React 18 & ReactDOM -->
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   
-  <!-- Chargement de Babel Standalone pour compiler JSX directement dans le navigateur -->
+  <!-- Babel Standalone pour exécuter le JSX dans le navigateur -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 </head>
 <body class="bg-[#100a14] text-stone-100 overflow-x-hidden font-sans select-none">
@@ -35,7 +35,7 @@
       return code;
     };
 
-    // Client REST Firebase temps réel ultra-léger sans dépendances SDK
+    // Client REST Firebase temps réel direct
     const firebaseSync = {
       async getRoom(code) {
         try {
@@ -150,12 +150,13 @@
         roles: ['clockmaker', 'investigator', 'empath', 'chambermaid', 'artist', 'sage', 'drunk', 'klutz', 'scarletwoman', 'baron', 'imp']
       },
       luf: {
-        id: 'luf', name: 'Teensyville: Laissez un Faire', desc: 'Script Teensyville culte articulé autour du Démon Léviathan.',
+        id: 'luf', name: 'Teensyville: Laissez un Faire', desc: 'Script Teensyville culte de Steven Medway articulé autour du Démon Léviathan.',
         roles: ['balloonist', 'savant', 'amnesiac', 'fisherman', 'artist', 'cannibal', 'mutant', 'lunatic', 'widow', 'goblin', 'leviathan']
       }
     };
 
     const ROLES_DB = {
+      // Trouble Brewing
       washerwoman: { id: 'washerwoman', name: 'Lavandière', team: 'townsfolk', icon: '🧺', cdnIcon: `${BOTC_ICON_CDN}washerwoman.png`, firstNight: 32, otherNight: 0, ability: "Vous commencez en sachant qu'un de 2 joueurs est un Villageois précis.", reminders: ['Villageois', 'Faux'], wiki: { howToRun: "La Nuit 1, montrez le jeton d'un Villageois en jeu, puis désignez 2 joueurs dont l'un a ce rôle.", tips: "Partagez l'info avec le joueur désigné dès le premier jour pour former un bloc de confiance." } },
       librarian: { id: 'librarian', name: 'Bibliothécaire', team: 'townsfolk', icon: '📚', cdnIcon: `${BOTC_ICON_CDN}librarian.png`, firstNight: 33, otherNight: 0, ability: "Vous commencez en sachant qu'un de 2 joueurs est un Étranger précis (ou 0).", reminders: ['Étranger', 'Faux'], wiki: { howToRun: "Montrez le jeton de l'Étranger et pointez 2 joueurs. S'il n'y en a aucun, montrez un zéro.", tips: "Si vous voyez l'Ivrogne, vous seul savez qui est vraiment ivre !" } },
       investigator: { id: 'investigator', name: 'Enquêteur', team: 'townsfolk', icon: '🔍', cdnIcon: `${BOTC_ICON_CDN}investigator.png`, firstNight: 34, otherNight: 0, ability: "Vous commencez en sachant qu'un de 2 joueurs est un Sbire précis.", reminders: ['Sbire', 'Faux'], wiki: { howToRun: "Désignez 2 joueurs et montrez le jeton du Sbire.", tips: "Attention au Reclus qui peut fausser cette détection." } },
@@ -187,7 +188,11 @@
       spy: { id: 'spy', name: 'Espion', team: 'minion', icon: '🕵️', cdnIcon: `${BOTC_ICON_CDN}spy.png`, firstNight: 68, otherNight: 68, ability: "Chaque nuit, vous voyez le Grimoire. Vous pouvez apparaître comme bon et comme Villageois ou Étranger.", reminders: [], wiki: { howToRun: "Ouvrez le Grimoire devant l'Espion quelques secondes pendant la nuit.", tips: "Aidez votre Démon en lui révélant qui cibler en priorité." } },
       scarletwoman: { id: 'scarletwoman', name: 'Femme Écarlate', team: 'minion', icon: '💋', cdnIcon: `${BOTC_ICON_CDN}scarletwoman.png`, firstNight: 0, otherNight: 19, ability: "S'il y a 5 joueurs ou plus en vie et que le Démon meurt, vous devenez immédiatement le Démon.", reminders: ['Est le Démon'], wiki: { howToRun: "Remplacez discrètement son rôle par le Démon si les conditions sont remplies à la mort du Démon.", tips: "Faites profil bas pour être la doublure parfaite en fin de partie." } },
       baron: { id: 'baron', name: 'Baron', team: 'minion', icon: '🎩', cdnIcon: `${BOTC_ICON_CDN}baron.png`, firstNight: 0, otherNight: 0, ability: "Il y a 2 Étrangers supplémentaires dans la partie. [+2 Étrangers]", reminders: [], wiki: { howToRun: "Lors de la préparation, retirez 2 Villageois et insérez 2 Étrangers supplémentaires.", tips: "Votre influence a déjà été décisive avant même le début de la première nuit !" } },
-      imp: { id: 'imp', name: 'Diablotin', team: 'demon', icon: '😈', cdnIcon: `${BOTC_ICON_CDN}imp.png`, firstNight: 0, otherNight: 24, ability: "Chaque nuit*, choisissez un joueur : il meurt. Si vous vous tuez, un Sbire devient le Diablotin.", reminders: ['Mort'], wiki: { howToRun: "Le Diablotin choisit sa cible. S'il se cible lui-même, un de ses Sbires vivants prend sa suite.", tips: "Le 'Starpass' (suicide nocturne) permet de déplacer le Démon sur un Sbire au-dessus de tout soupçon." } }
+      imp: { id: 'imp', name: 'Diablotin', team: 'demon', icon: '😈', cdnIcon: `${BOTC_ICON_CDN}imp.png`, firstNight: 0, otherNight: 24, ability: "Chaque nuit*, choisissez un joueur : il meurt. Si vous vous tuez, un Sbire devient le Diablotin.", reminders: ['Mort'], wiki: { howToRun: "Le Diablotin choisit sa cible. S'il se cible lui-même, un de ses Sbires vivants prend sa suite.", tips: "Le 'Starpass' (suicide nocturne) permet de déplacer le Démon sur un Sbire au-dessus de tout soupçon." } },
+      clockmaker: { id: 'clockmaker', name: 'Horloger', team: 'townsfolk', icon: '🕰️', cdnIcon: `${BOTC_ICON_CDN}clockmaker.png`, firstNight: 31, otherNight: 0, ability: "Vous apprenez à combien de pas se trouve le Démon du Sbire le plus proche.", reminders: [], wiki: { howToRun: "Comptez le nombre de pas direct vers le sbire le plus proche.", tips: "Indispensable pour cartographier le cercle." } },
+      artist: { id: 'artist', name: 'Artiste', team: 'townsfolk', icon: '🎨', cdnIcon: `${BOTC_ICON_CDN}artist.png`, firstNight: 0, otherNight: 0, ability: "Une fois par partie, posez en privé une question par oui/non au Conteur.", reminders: ['Question posée'], wiki: { howToRun: "Répondez uniquement par Oui ou Non.", tips: "Posez une question binaire décisive sur le Démon." } },
+      savant: { id: 'savant', name: 'Savant', team: 'townsfolk', icon: '📜', cdnIcon: `${BOTC_ICON_CDN}savant.png`, firstNight: 0, otherNight: 0, ability: "Chaque jour, visitez le Conteur : il vous donne deux déclarations, l'une vraie, l'autre fausse.", reminders: [], wiki: { howToRun: "Donnez 1 info strictement vraie et 1 info rigoureusement fausse.", tips: "Recoupez vos paires chaque jour pour déduire la vérité." } },
+      philosopher: { id: 'philosopher', name: 'Philosophe', team: 'townsfolk', icon: '🦉', cdnIcon: `${BOTC_ICON_CDN}philosopher.png`, firstNight: 2, otherNight: 2, ability: "Une fois par partie, choisissez un rôle bon : vous obtenez ce pouvoir. S'il est en jeu, il devient ivre.", reminders: ['Ivre'], wiki: { howToRun: "Donnez-lui le pouvoir choisi et enivrez le détenteur original.", tips: "Choisissez un pouvoir récurrent comme la Voyante." } }
     };
 
     const PLAYER_DISTRIBUTION = {
@@ -787,13 +792,13 @@
 
       const changeUserRoom = (roomId) => {
         setCurrentDayRoom(roomId);
-        if (!isStorytellerMode && players.length > 0) {
+        if (!isStorytellerMode && currentUserId) {
           setPlayers(prev => {
-            const updated = prev.map((p, idx) => idx === 0 ? { ...p, inRoom: roomId } : p);
+            const updated = prev.map(p => p.id === currentUserId ? { ...p, inRoom: roomId } : p);
             broadcastGameState(updated);
             return updated;
           });
-        } else {
+        } else if (isStorytellerMode) {
           setStoryteller(s => ({ ...s, currentRoom: roomId }));
         }
       };
@@ -933,7 +938,7 @@
                 )}
 
                 {joinError && (
-                  <div className="p-2 rounded-lg bg-red-950/80 border border-red-500/80 text-red-200 text-xs font-semibold flex items-center gap-1.5 animate-shake">
+                  <div className="p-2 rounded-lg bg-red-950/80 border border-red-500/80 text-red-200 text-xs font-semibold flex items-center gap-1.5">
                     <Icon name="AlertTriangle" className="w-3.5 h-3.5 text-red-400 shrink-0" />
                     <span>{joinError}</span>
                   </div>
@@ -969,7 +974,9 @@
                       };
 
                       await firebaseSync.setRoom(newCode, newRoomData);
-                      localStorage.setItem(`botc_room_${newCode}`, JSON.stringify(newRoomData));
+                      try {
+                        localStorage.setItem(`botc_room_${newCode}`, JSON.stringify(newRoomData));
+                      } catch (e) {}
 
                       setRoomCode(newCode);
                       setStoryteller(initialStoryteller);
@@ -986,7 +993,6 @@
                         return;
                       }
 
-                      // Vérification de l'existence du vrai salon en ligne
                       let existingRoom = await firebaseSync.getRoom(codeToJoin);
                       if (!existingRoom) {
                         try {
