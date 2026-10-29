@@ -16,7 +16,16 @@
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 </head>
 <body class="bg-[#100a14] text-stone-100 overflow-x-hidden font-sans select-none">
-  <div id="root"></div>
+  <div id="root">
+    <div class="min-h-screen flex flex-col items-center justify-center p-6 text-center">
+      <div class="w-16 h-16 rounded-full bg-purple-950/80 border-2 border-amber-500/80 flex items-center justify-center text-3xl mb-3 animate-pulse">
+        😈
+      </div>
+      <div class="font-serif font-black tracking-widest text-amber-200 text-lg">
+        CHARGEMENT DU GRIMOIRE...
+      </div>
+    </div>
+  </div>
 
   <script type="text/babel">
     const { useState, useEffect, useRef, useMemo } = React;
@@ -35,53 +44,18 @@
       return code;
     };
 
-    // Firebase supprime les tableaux vides, les objets vides et les valeurs null :
-    // on les restaure à la lecture pour que l'interface ne plante pas (écran noir).
-    const normalizeRoomData = (data) => {
-      if (!data || typeof data !== 'object') return data;
-
-      const toArray = (v) => {
-        if (Array.isArray(v)) return v;
-        if (v && typeof v === 'object') return Object.values(v);
-        return [];
-      };
-
-      const out = { ...data };
-
-      if (data.players !== undefined) {
-        out.players = toArray(data.players)
-          .filter(Boolean)
-          .map(p => ({ ...p, reminders: toArray(p.reminders) }));
-      }
-
-      if (data.nomination) {
-        out.nomination = {
-          active: false,
-          nominatorId: null,
-          nomineeId: null,
-          clockIndex: -1,
-          isRunning: false,
-          speed: 1600,
-          ...data.nomination,
-          votes: data.nomination.votes || {}
-        };
-      }
-
-      if (data.demonBluffs) {
-        const src = data.demonBluffs;
-        out.demonBluffs = [0, 1, 2].map(i => (src[i] !== undefined ? src[i] : null));
-      }
-
-      return out;
-    };
-
-    // Client REST Firebase temps réel ultra-léger sans dépendances SDK
+    // Client REST Firebase temps réel direct
     const firebaseSync = {
       async getRoom(code) {
         try {
           const res = await fetch(`${FIREBASE_DB_URL}/rooms/${code}.json`);
           if (!res.ok) return null;
-          return normalizeRoomData(await res.json());
+          const data = await res.json();
+          if (!data) return null;
+          if (data.players && !Array.isArray(data.players)) {
+            data.players = Object.values(data.players);
+          }
+          return data;
         } catch (e) {
           return null;
         }
@@ -104,6 +78,42 @@
           });
         } catch (e) {}
       }
+    };
+
+    // Fonction d'assainissement systématique des joueurs pour éviter les crashs de rendu
+    const sanitizePlayer = (p, idx = 0) => {
+      if (!p || typeof p !== 'object') {
+        return {
+          id: Date.now() + Math.random(),
+          name: `Joueur ${idx + 1}`,
+          avatar: BOT_AVATARS[idx % BOT_AVATARS.length],
+          role: null,
+          hypothesisRole: null,
+          alive: true,
+          ghostVote: true,
+          reminders: [],
+          inRoom: 'square',
+          micActive: true
+        };
+      }
+      return {
+        id: p.id || (Date.now() + Math.random()),
+        name: p.name || `Joueur ${idx + 1}`,
+        avatar: p.avatar || BOT_AVATARS[idx % BOT_AVATARS.length],
+        role: p.role || null,
+        hypothesisRole: p.hypothesisRole || null,
+        alive: p.alive !== undefined ? Boolean(p.alive) : true,
+        ghostVote: p.ghostVote !== undefined ? Boolean(p.ghostVote) : true,
+        reminders: Array.isArray(p.reminders) ? p.reminders : [],
+        inRoom: p.inRoom || 'square',
+        micActive: p.micActive !== undefined ? Boolean(p.micActive) : true
+      };
+    };
+
+    const sanitizePlayerList = (list) => {
+      if (!list) return [];
+      const arr = Array.isArray(list) ? list : Object.values(list);
+      return arr.filter(Boolean).map((p, idx) => sanitizePlayer(p, idx));
     };
 
     // ==========================================
@@ -144,7 +154,7 @@
         LogIn: <><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></>,
         LogOut: <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></>,
         ArrowRight: <><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></>,
-        Radio: <><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49"/><path d="M7.76 16.24a6 6 0 0 1 0-8.49"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 19.07a10 10 0 0 1 0-14.14"/></>,
+        Radio: <><circle cx="12" cy="2" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49"/><path d="M7.76 16.24a6 6 0 0 1 0-8.49"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 19.07a10 10 0 0 1 0-14.14"/></>,
         Timer: <><line x1="10" y1="2" x2="14" y2="2"/><line x1="12" y1="14" x2="15" y2="11"/><circle cx="12" cy="14" r="8"/></>,
         DoorOpen: <><path d="M13 4h3a2 2 0 0 1 2 2v14"/><path d="M2 20h20"/><path d="M13 20V4a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v16"/><circle cx="9" cy="12" r="1"/></>,
         Info: <><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></>
@@ -427,17 +437,31 @@
           try {
             const data = await firebaseSync.getRoom(roomCode);
             if (data && !isCancelled) {
-              if (data.players) setPlayers(data.players);
+              if (data.players !== undefined) {
+                setPlayers(sanitizePlayerList(data.players));
+              }
               if (data.phase) setPhase(data.phase);
-              if (data.dayNumber !== undefined) setDayNumber(data.dayNumber);
-              if (data.gameStarted !== undefined) setGameStarted(data.gameStarted);
+              if (data.dayNumber !== undefined) setDayNumber(Number(data.dayNumber) || 1);
+              if (data.gameStarted !== undefined) setGameStarted(Boolean(data.gameStarted));
               if (data.nomination) setNomination(data.nomination);
-              if (data.storyteller) setStoryteller(data.storyteller);
-              if (data.selectedScriptId) setSelectedScriptId(data.selectedScriptId);
-              if (data.demonBluffs) setDemonBluffs(data.demonBluffs);
+              if (data.storyteller) {
+                setStoryteller(prev => ({
+                  ...prev,
+                  ...data.storyteller,
+                  name: data.storyteller.name || prev.name,
+                  avatar: data.storyteller.avatar || prev.avatar,
+                  currentRoom: data.storyteller.currentRoom || prev.currentRoom || 'square'
+                }));
+              }
+              if (data.selectedScriptId && SCRIPTS_DATA[data.selectedScriptId]) {
+                setSelectedScriptId(data.selectedScriptId);
+              }
+              if (data.demonBluffs && Array.isArray(data.demonBluffs)) {
+                setDemonBluffs(data.demonBluffs);
+              }
               if (data.onTheBlock !== undefined) setOnTheBlock(data.onTheBlock);
-              if (data.dayTimerSeconds !== undefined && !isStorytellerMode) setDayTimerSeconds(data.dayTimerSeconds);
-              if (data.isTimerRunning !== undefined && !isStorytellerMode) setIsTimerRunning(data.isTimerRunning);
+              if (data.dayTimerSeconds !== undefined && !isStorytellerMode) setDayTimerSeconds(Number(data.dayTimerSeconds) || 300);
+              if (data.isTimerRunning !== undefined && !isStorytellerMode) setIsTimerRunning(Boolean(data.isTimerRunning));
             }
           } catch (e) {}
 
@@ -447,9 +471,9 @@
             if (localRaw) {
               const localData = JSON.parse(localRaw);
               if (localData && !isCancelled) {
-                if (localData.players) setPlayers(localData.players);
+                if (localData.players !== undefined) setPlayers(sanitizePlayerList(localData.players));
                 if (localData.phase) setPhase(localData.phase);
-                if (localData.gameStarted !== undefined) setGameStarted(localData.gameStarted);
+                if (localData.gameStarted !== undefined) setGameStarted(Boolean(localData.gameStarted));
                 if (localData.nomination) setNomination(localData.nomination);
               }
             }
@@ -521,7 +545,7 @@
       const assignedCounts = useMemo(() => {
         const counts = { townsfolk: 0, outsider: 0, minion: 0, demon: 0 };
         players.forEach(p => {
-          if (p.role && ROLES_DB[p.role]) {
+          if (p && p.role && ROLES_DB[p.role]) {
             const team = ROLES_DB[p.role].team;
             if (counts[team] !== undefined) counts[team]++;
           }
@@ -611,11 +635,13 @@
           .filter(r => r && (r.team === 'townsfolk' || r.team === 'outsider') && !inGameRoles.has(r.id));
 
         const shuffled = [...availableGood].sort(() => 0.5 - Math.random());
-        setDemonBluffs([
+        const newBluffs = [
           shuffled[0]?.id || null,
           shuffled[1]?.id || null,
           shuffled[2]?.id || null
-        ]);
+        ];
+        setDemonBluffs(newBluffs);
+        broadcastGameState(players, phase, gameStarted, { demonBluffs: newBluffs });
         playSound('bell');
       };
 
@@ -660,7 +686,7 @@
 
         setPlayers(updatedPlayers);
         setSwitchStorytellerModalOpen(false);
-        broadcastGameState(updatedPlayers, phase, gameStarted);
+        broadcastGameState(updatedPlayers, phase, gameStarted, { storyteller: updatedSt });
         playSound('bell');
       };
 
@@ -734,7 +760,7 @@
             const nextIdx = prev.clockIndex + 1;
             if (nextIdx >= orderedVoters.length) {
               playSound('gavel');
-              const totalVotes = Object.values(prev.votes).filter(Boolean).length;
+              const totalVotes = Object.values(prev.votes || {}).filter(Boolean).length;
               const aliveTotal = players.filter(p => p.alive).length;
               const required = Math.ceil(aliveTotal / 2);
               const nominee = players.find(p => p.id === prev.nomineeId);
@@ -750,7 +776,7 @@
               // Consommation du vote fantôme
               setPlayers(curr => {
                 const updated = curr.map(p => {
-                  if (!p.alive && prev.votes[p.id]) {
+                  if (!p.alive && prev.votes && prev.votes[p.id]) {
                     return { ...p, ghostVote: false };
                   }
                   return p;
@@ -771,7 +797,7 @@
       const handleApproveAccusation = () => {
         if (!pendingAccusation) return;
         playSound('bell');
-        setNomination({
+        const newNomination = {
           active: true,
           nominatorId: pendingAccusation.nominatorId,
           nomineeId: pendingAccusation.nomineeId,
@@ -779,8 +805,10 @@
           isRunning: false,
           votes: {},
           speed: 1600
-        });
+        };
+        setNomination(newNomination);
         setPendingAccusation(null);
+        broadcastGameState(players, phase, gameStarted, { nomination: newNomination });
       };
 
       const togglePlayerLife = (playerId) => {
@@ -796,7 +824,7 @@
         playSound('gavel');
         setPlayers(prev => {
           const updated = prev.map(p => p.id === onTheBlock.playerId ? { ...p, alive: false } : p);
-          broadcastGameState(updated);
+          broadcastGameState(updated, phase, gameStarted, { onTheBlock: null });
           return updated;
         });
         setOnTheBlock(null);
@@ -829,12 +857,21 @@
         setCurrentDayRoom(roomId);
         if (!isStorytellerMode && players.length > 0) {
           setPlayers(prev => {
-            const updated = prev.map((p, idx) => idx === 0 ? { ...p, inRoom: roomId } : p);
+            const updated = prev.map(p => {
+              if (currentUserId && p.id === currentUserId) {
+                return { ...p, inRoom: roomId };
+              }
+              return p;
+            });
             broadcastGameState(updated);
             return updated;
           });
         } else {
-          setStoryteller(s => ({ ...s, currentRoom: roomId }));
+          setStoryteller(s => {
+            const updatedSt = { ...s, currentRoom: roomId };
+            broadcastGameState(players, phase, gameStarted, { storyteller: updatedSt });
+            return updatedSt;
+          });
         }
       };
 
@@ -1041,9 +1078,10 @@
                         return;
                       }
 
+                      const currentList = sanitizePlayerList(existingRoom.players);
                       const myId = Date.now() + Math.random();
-                      const nextAvatar = BOT_AVATARS[(existingRoom.players?.length || 0) % BOT_AVATARS.length];
-                      const newJoinedPlayer = {
+                      const nextAvatar = BOT_AVATARS[currentList.length % BOT_AVATARS.length];
+                      const newJoinedPlayer = sanitizePlayer({
                         id: myId,
                         name: finalPseudo,
                         avatar: nextAvatar,
@@ -1054,14 +1092,16 @@
                         reminders: [],
                         inRoom: 'square',
                         micActive: true
-                      };
+                      }, currentList.length);
 
-                      const updatedPlayers = [...(existingRoom.players || []), newJoinedPlayer];
+                      const updatedPlayers = [...currentList, newJoinedPlayer];
                       await firebaseSync.updateRoom(codeToJoin, { players: updatedPlayers });
 
                       setRoomCode(codeToJoin);
                       setCurrentUserId(myId);
-                      setStoryteller(existingRoom.storyteller || storyteller);
+                      if (existingRoom.storyteller) {
+                        setStoryteller(prev => ({ ...prev, ...existingRoom.storyteller }));
+                      }
                       setSelectedScriptId(existingRoom.selectedScriptId || 'tb');
                       setPlayers(updatedPlayers);
                       setPhase(existingRoom.phase || 'day');
@@ -1642,7 +1682,7 @@
                           Accusé : <strong className="text-red-400">{players.find(p => p.id === nomination.nomineeId)?.name}</strong>
                         </div>
                         <div className="text-2xl font-serif font-black text-amber-200 my-1">
-                          ✋ {Object.values(nomination.votes).filter(Boolean).length} / {majorityRequired}
+                          ✋ {Object.values(nomination.votes || {}).filter(Boolean).length} / {majorityRequired}
                         </div>
                         <div className="text-[10px] text-stone-400 mb-2 truncate max-w-[150px]">
                           {nomination.clockIndex === -1 ? (
@@ -1709,7 +1749,8 @@
 
                   {/* SIÈGES DES JOUEURS */}
                   {players.map((p, index) => {
-                    const angle = (index / players.length) * 2 * Math.PI - Math.PI / 2;
+                    if (!p) return null;
+                    const angle = (index / (players.length || 1)) * 2 * Math.PI - Math.PI / 2;
                     const radiusPercent = 43;
                     const left = `${50 + radiusPercent * Math.cos(angle)}%`;
                     const top = `${50 + radiusPercent * Math.sin(angle)}%`;
@@ -1720,12 +1761,12 @@
 
                     const isNominee = nomination.active && nomination.nomineeId === p.id;
                     const isVotingNow = nomination.active && currentVoter?.id === p.id;
-                    const hasVoted = nomination.votes[p.id];
+                    const hasVoted = nomination.votes ? Boolean(nomination.votes[p.id]) : false;
                     const nightWakeOrder = (phase === 'night' && p.role) ? nightOrderRankMap[p.role] : null;
 
                     return (
                       <div
-                        key={p.id}
+                        key={p.id || index}
                         style={{ left, top }}
                         className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center z-20 group"
                       >
@@ -1848,7 +1889,7 @@
 
                           {/* MINI-TOKENS DE RAPPEL SANS CHEVAUCHEMENT */}
                           <div className="absolute left-full ml-1.5 top-1/2 -translate-y-1/2 flex flex-col gap-1 z-30 pointer-events-auto">
-                            {p.reminders.map((remLabel, rIdx) => {
+                            {(Array.isArray(p.reminders) ? p.reminders : []).map((remLabel, rIdx) => {
                               const preset = REMINDERS_PRESETS.find(pr => pr.label === remLabel) || {
                                 label: remLabel,
                                 code: 'RAPP',
@@ -2422,11 +2463,10 @@
                 <div className="flex-1 overflow-y-auto space-y-2 pr-1">
                   <button
                     onClick={() => {
-                      setDemonBluffs(prev => {
-                        const next = [...prev];
-                        next[demonBluffPickerIndex] = null;
-                        return next;
-                      });
+                      const next = [...demonBluffs];
+                      next[demonBluffPickerIndex] = null;
+                      setDemonBluffs(next);
+                      broadcastGameState(players, phase, gameStarted, { demonBluffs: next });
                       setDemonBluffPickerIndex(null);
                     }}
                     className="w-full py-1.5 bg-stone-900 hover:bg-stone-800 text-stone-400 rounded-lg text-xs font-semibold"
@@ -2441,11 +2481,10 @@
                       <button
                         key={r.id}
                         onClick={() => {
-                          setDemonBluffs(prev => {
-                            const next = [...prev];
-                            next[demonBluffPickerIndex] = r.id;
-                            return next;
-                          });
+                          const next = [...demonBluffs];
+                          next[demonBluffPickerIndex] = r.id;
+                          setDemonBluffs(next);
+                          broadcastGameState(players, phase, gameStarted, { demonBluffs: next });
                           setDemonBluffPickerIndex(null);
                           playSound('bell');
                         }}
@@ -2782,8 +2821,51 @@
       );
     }
 
+    // Composant Error Boundary de secours pour empêcher tout écran noir
+    class SafeErrorBoundary extends React.Component {
+      constructor(props) {
+        super(props);
+        this.state = { hasError: false, error: null };
+      }
+      static getDerivedStateFromError(error) {
+        return { hasError: true, error };
+      }
+      componentDidCatch(error, errorInfo) {
+        console.error("Erreur critique interceptée :", error, errorInfo);
+      }
+      render() {
+        if (this.state.hasError) {
+          return (
+            <div className="min-h-screen bg-[#100a14] flex flex-col items-center justify-center p-6 text-center select-none">
+              <div className="w-16 h-16 rounded-full bg-red-950/80 border-2 border-red-500 flex items-center justify-center text-3xl mb-4">
+                ⚠️
+              </div>
+              <h2 className="text-xl font-bold font-serif text-amber-200 mb-2">Une interruption est survenue</h2>
+              <p className="text-xs text-stone-400 max-w-md mb-4">
+                {this.state.error?.message || "Erreur de synchronisation avec le salon."}
+              </p>
+              <button
+                onClick={() => {
+                  this.setState({ hasError: false, error: null });
+                  window.location.reload();
+                }}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-stone-950 font-bold rounded-xl text-xs shadow-lg"
+              >
+                Recharger la salle
+              </button>
+            </div>
+          );
+        }
+        return this.props.children;
+      }
+    }
+
     const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(<App />);
+    root.render(
+      <SafeErrorBoundary>
+        <App />
+      </SafeErrorBoundary>
+    );
   </script>
 </body>
 </html>
