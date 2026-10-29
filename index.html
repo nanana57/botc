@@ -438,7 +438,18 @@
             const data = await firebaseSync.getRoom(roomCode);
             if (data && !isCancelled) {
               if (data.players !== undefined) {
-                setPlayers(sanitizePlayerList(data.players));
+                const incomingPlayers = sanitizePlayerList(data.players);
+                setPlayers(prev => {
+                  // Détecte les nouveaux joueurs arrivés (ex: joueur ayant rejoint avec le code)
+                  if (incomingPlayers.length !== prev.length || JSON.stringify(incomingPlayers.map(p => p.id)) !== JSON.stringify(prev.map(p => p.id))) {
+                    return incomingPlayers;
+                  }
+                  // Si même nombre, met à jour les données (votes, vie/mort, salons) sans écraser les références
+                  if (JSON.stringify(incomingPlayers) !== JSON.stringify(prev)) {
+                    return incomingPlayers;
+                  }
+                  return prev;
+                });
               }
               if (data.phase) setPhase(data.phase);
               if (data.dayNumber !== undefined) setDayNumber(Number(data.dayNumber) || 1);
@@ -471,7 +482,15 @@
             if (localRaw) {
               const localData = JSON.parse(localRaw);
               if (localData && !isCancelled) {
-                if (localData.players !== undefined) setPlayers(sanitizePlayerList(localData.players));
+                if (localData.players !== undefined) {
+                  const incomingLocal = sanitizePlayerList(localData.players);
+                  setPlayers(prev => {
+                    if (incomingLocal.length !== prev.length || JSON.stringify(incomingLocal.map(p => p.id)) !== JSON.stringify(prev.map(p => p.id))) {
+                      return incomingLocal;
+                    }
+                    return prev;
+                  });
+                }
                 if (localData.phase) setPhase(localData.phase);
                 if (localData.gameStarted !== undefined) setGameStarted(Boolean(localData.gameStarted));
                 if (localData.nomination) setNomination(localData.nomination);
@@ -480,7 +499,7 @@
           } catch (e) {}
         };
 
-        const interval = setInterval(pollGameState, 1500);
+        const interval = setInterval(pollGameState, 1000);
         pollGameState();
 
         return () => {
