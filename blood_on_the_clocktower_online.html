@@ -1,0 +1,1001 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BOTC Online</title>
+  
+  <!-- Chargement de Tailwind CSS pour le design -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Chargement de React -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  
+  <!-- Chargement de Babel pour lire le code JSX dans le navigateur -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body class="bg-[#100a14] text-stone-100 overflow-x-hidden font-sans">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef, useMemo } = React;
+
+    // ==========================================
+    // COMPOSANT D'ICÔNES SVG AUTONOME (ZERO CRASH)
+    // ==========================================
+    const Icon = ({ name, className = "w-4 h-4", ...props }) => {
+      const icons = {
+        Eye: <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/>,
+        EyeOff: <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24 M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68 M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61 M2 2l20 20"/>,
+        Moon: <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>,
+        Sun: <><circle cx="12" cy="12" r="4"/><path d="M12 2v2 M12 20v2 M4.93 4.93l1.41 1.41 M17.66 17.66l1.41 1.41 M2 12h2 M20 12h2 M6.34 17.66l-1.41 1.41 M19.07 4.93l-1.41 1.41"/></>,
+        Users: <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z M22 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75"/></>,
+        Skull: <><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><path d="M8 20v2h8v-2 M12.5 17l-.5-1-.5 1h1z M16 20a3 3 0 0 0 1.5-2.6 7 7 0 1 0-11 0A3 3 0 0 0 8 20z"/></>,
+        Heart: <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>,
+        Shield: <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>,
+        BookOpen: <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>,
+        Settings: <><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></>,
+        Play: <polygon points="5 3 19 12 5 21 5 3"/>,
+        Pause: <><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></>,
+        RotateCcw: <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8 M3 3v5h5"/>,
+        Check: <polyline points="20 6 9 17 4 12"/>,
+        X: <path d="M18 6 6 18 M6 6l12 12"/>,
+        Plus: <path d="M5 12h14 M12 5v14"/>,
+        Trash2: <path d="M3 6h18 M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6 M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2 M10 11v6 M14 11v6"/>,
+        Video: <><path d="m22 7-6 4v2l6 4v-10z"/><rect width="14" height="12" x="2" y="6" rx="2"/></>,
+        VideoOff: <path d="m22 7-6 4v2l6 4v-10z M2 2l20 20 M10.66 6H14a2 2 0 0 1 2 2v2.34l1 1 M2 8.34V16a2 2 0 0 0 2 2h7.66"/>,
+        Mic: <><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2 M12 19v3 M8 22h8"/></>,
+        MicOff: <path d="m2 2 20 20 M18.89 13.23A7.12 7.12 0 0 0 19 12v-2 M5 10v2a7 7 0 0 0 12 5 M15 9.34V5a3 3 0 0 0-5.68-1.33 M9 9v3a3 3 0 0 0 5.12 2.12 M12 19v3 M8 22h8"/>,
+        Crown: <path d="m2 4 3 12h14l3-12-6 7-4-7-4 7-6-7zm3 16h14"/>,
+        Flame: <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>,
+        AlertTriangle: <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z M12 9v4 M12 17h.01"/>,
+        Gavel: <path d="m14 13-7.5 7.5 M16 11l4-4a2 2 0 0 0-2.83-2.83l-4 4 M14 9l2 2 M18 5l2 2 M2 21h4"/>,
+        Clock: <><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></>,
+        UserPlus: <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z M19 8v6 M22 11h-6"/>,
+        UserMinus: <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z M22 11h-6"/>,
+        Shuffle: <path d="M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l6.1-8.6c.8-1.1 2-1.7 3.3-1.7H22 M18 2l4 4-4 4 M2 6h1.4c1.3 0 2.5.6 3.3 1.7l2 2.8 M14.3 15.5l1.9 2.8c.8 1.1 2 1.7 3.3 1.7H22 M18 16l4 4-4 4"/>,
+        Compass: <><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></>,
+        LogIn: <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4 M10 17l5-5-5-5 M15 12H3"/>,
+        LogOut: <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4 M16 17l5-5-5-5 M21 12H9"/>,
+        ArrowRight: <path d="M5 12h14 M12 5l7 7-7 7"/>,
+        Radio: <><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49 M7.76 16.24a6 6 0 0 1 0-8.49 M19.07 4.93a10 10 0 0 1 0 14.14 M4.93 19.07a10 10 0 0 1 0-14.14"/></>,
+        Timer: <><line x1="10" x2="14" y1="2" y2="2"/><line x1="12" x2="15" y1="14" y2="11"/><circle cx="12" cy="14" r="8"/></>,
+        DoorOpen: <path d="M13 4h3a2 2 0 0 1 2 2v14 M2 20h20 M13 20V4a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v16 M9 12v.01"/>,
+        Info: <><circle cx="12" cy="12" r="10"/><path d="M12 16v-4 M12 8h.01"/></>
+      };
+
+      return (
+        <svg 
+          xmlns="http://www.w3.org/2000/svg" 
+          viewBox="0 0 24 24" 
+          fill="none" 
+          stroke="currentColor" 
+          strokeWidth="2" 
+          strokeLinecap="round" 
+          strokeLinejoin="round" 
+          className={className} 
+          {...props}
+        >
+          {icons[name] || <circle cx="12" cy="12" r="8" />}
+        </svg>
+      );
+    };
+
+    // ==========================================
+    // ASSETS & DATA: OFFICIAL BOTC TOKENS
+    // ==========================================
+    const BOTC_ICON_CDN = "https://raw.githubusercontent.com/bra1n/townsquare/develop/src/assets/icons/";
+
+    const SCRIPTS_DATA = {
+      tb: {
+        id: 'tb', name: 'Trouble Brewing', desc: 'Le script classique de référence.',
+        roles: ['washerwoman', 'librarian', 'investigator', 'chef', 'empath', 'fortuneteller', 'undertaker', 'monk', 'slayer', 'soldier', 'mayor', 'butler', 'drunk', 'recluse', 'saint', 'poisoner', 'spy', 'scarletwoman', 'baron', 'imp']
+      },
+      bmr: {
+        id: 'bmr', name: 'Bad Moon Rising', desc: 'Morts multiples et protections.',
+        roles: ['grandmother', 'sailor', 'chambermaid', 'exorcist', 'innkeeper', 'gambler', 'gossip', 'courtier', 'professor', 'minstrel', 'tea_lady', 'pacifist', 'fool', 'tinker', 'moonchild', 'goon', 'klutz', 'godfather', 'devils_advocate', 'assassin', 'mastermind', 'zombuul', 'pukka', 'shabaloth', 'po']
+      },
+      snv: {
+        id: 'snv', name: 'Sects & Violets', desc: 'Manipulation et folie collective.',
+        roles: ['clockmaker', 'dreamer', 'snake_charmer', 'mathematician', 'flowergirl', 'town_crier', 'oracle', 'savant', 'seamstress', 'philosopher', 'artist', 'juggler', 'sage', 'mutant', 'sweetheart', 'barber', 'klutz', 'evil_twin', 'witch', 'cerenovus', 'pit_hag', 'fang_gu', 'vigormortis', 'nodii', 'vortox']
+      },
+      ngj: {
+        id: 'ngj', name: 'Teensyville: No Greater Joy', desc: 'Format compact 5-6 joueurs.',
+        roles: ['clockmaker', 'investigator', 'empath', 'chambermaid', 'artist', 'sage', 'drunk', 'klutz', 'scarletwoman', 'baron', 'imp']
+      },
+      luf: {
+        id: 'luf', name: 'Teensyville: Laissez un Faire', desc: 'Autour du Démon Léviathan.',
+        roles: ['balloonist', 'savant', 'amnesiac', 'fisherman', 'artist', 'cannibal', 'mutant', 'lunatic', 'widow', 'goblin', 'leviathan']
+      }
+    };
+
+    const ROLES_DB = {
+      washerwoman: { id: 'washerwoman', name: 'Lavandière', team: 'townsfolk', cdnIcon: `${BOTC_ICON_CDN}washerwoman.png`, firstNight: 32, otherNight: 0, ability: "Vous savez qu'un de 2 joueurs est un Villageois précis.", reminders: ['Villageois', 'Faux'] },
+      librarian: { id: 'librarian', name: 'Bibliothécaire', team: 'townsfolk', cdnIcon: `${BOTC_ICON_CDN}librarian.png`, firstNight: 33, otherNight: 0, ability: "Vous savez qu'un de 2 joueurs est un Étranger précis (ou 0).", reminders: ['Étranger', 'Faux'] },
+      investigator: { id: 'investigator', name: 'Enquêteur', team: 'townsfolk', cdnIcon: `${BOTC_ICON_CDN}investigator.png`, firstNight: 34, otherNight: 0, ability: "Vous savez qu'un de 2 joueurs est un Sbire précis.", reminders: ['Sbire', 'Faux'] },
+      chef: { id: 'chef', name: 'Chef Cuisinier', team: 'townsfolk', cdnIcon: `${BOTC_ICON_CDN}chef.png`, firstNight: 35, otherNight: 0, ability: "Vous apprenez combien de paires de joueurs maléfiques sont voisins.", reminders: [] },
+      empath: { id: 'empath', name: 'Empathe', team: 'townsfolk', cdnIcon: `${BOTC_ICON_CDN}empath.png`, firstNight: 36, otherNight: 53, ability: "Chaque nuit, vous apprenez combien de vos 2 voisins vivants sont maléfiques.", reminders: [] },
+      fortuneteller: { id: 'fortuneteller', name: 'Voyante', team: 'townsfolk', cdnIcon: `${BOTC_ICON_CDN}fortuneteller.png`, firstNight: 37, otherNight: 54, ability: "Chaque nuit, choisissez 2 joueurs : vous apprenez si l'un est Démon. (Red Herring)", reminders: ['Red Herring'] },
+      undertaker: { id: 'undertaker', name: 'Croque-mort', team: 'townsfolk', cdnIcon: `${BOTC_ICON_CDN}undertaker.png`, firstNight: 0, otherNight: 55, ability: "Chaque nuit*, vous apprenez quel rôle est mort par exécution aujourd'hui.", reminders: ['Exécuté'] },
+      monk: { id: 'monk', name: 'Moine', team: 'townsfolk', cdnIcon: `${BOTC_ICON_CDN}monk.png`, firstNight: 0, otherNight: 12, ability: "Chaque nuit*, choisissez un joueur (pas vous) : il est protégé du Démon.", reminders: ['Protégé'] },
+      slayer: { id: 'slayer', name: 'Pourfendeur', team: 'townsfolk', cdnIcon: `${BOTC_ICON_CDN}slayer.png`, firstNight: 0, otherNight: 0, ability: "Une fois par partie, désignez publiquement un joueur : s'il est Démon, il meurt.", reminders: ['Plus de pouvoir'] },
+      soldier: { id: 'soldier', name: 'Soldat', team: 'townsfolk', cdnIcon: `${BOTC_ICON_CDN}soldier.png`, firstNight: 0, otherNight: 0, ability: "Vous êtes naturellement protégé des attaques nocturnes du Démon.", reminders: ['Protégé'] },
+      mayor: { id: 'mayor', name: 'Maire', team: 'townsfolk', cdnIcon: `${BOTC_ICON_CDN}mayor.png`, firstNight: 0, otherNight: 0, ability: "Si 3 joueurs vivants et pas d'exécution, le Bien gagne. La nuit, votre mort ricoche.", reminders: [] },
+      chambermaid: { id: 'chambermaid', name: 'Femme de Chambre', team: 'townsfolk', cdnIcon: `${BOTC_ICON_CDN}chambermaid.png`, firstNight: 51, otherNight: 70, ability: "Chaque nuit, choisissez 2 joueurs : vous apprenez combien se sont réveillés.", reminders: [] },
+      sage: { id: 'sage', name: 'Sage', team: 'townsfolk', cdnIcon: `${BOTC_ICON_CDN}sage.png`, firstNight: 0, otherNight: 43, ability: "Si le Démon vous tue la nuit, vous apprenez que l'un de 2 joueurs est le Démon.", reminders: [] },
+      balloonist: { id: 'balloonist', name: 'Aéronaute', team: 'townsfolk', cdnIcon: `${BOTC_ICON_CDN}balloonist.png`, firstNight: 45, otherNight: 62, ability: "Chaque nuit, vous apprenez 1 joueur d'un type différent. [+0 ou +1 Étranger]", reminders: ['Vu'] },
+      amnesiac: { id: 'amnesiac', name: 'Amnésique', team: 'townsfolk', cdnIcon: `${BOTC_ICON_CDN}amnesiac.png`, firstNight: 1, otherNight: 1, ability: "Vous ne connaissez pas votre pouvoir. Devinez-le chaque jour au Conteur.", reminders: [] },
+      fisherman: { id: 'fisherman', name: 'Pêcheur', team: 'townsfolk', cdnIcon: `${BOTC_ICON_CDN}fisherman.png`, firstNight: 0, otherNight: 0, ability: "Une fois par partie, le Conteur vous donne un conseil pour gagner.", reminders: ['Conseil donné'] },
+      cannibal: { id: 'cannibal', name: 'Cannibale', team: 'townsfolk', cdnIcon: `${BOTC_ICON_CDN}cannibal.png`, firstNight: 0, otherNight: 0, ability: "Vous gagnez le pouvoir du dernier exécuté. S'il était maléfique, vous êtes empoisonné.", reminders: ['Pouvoir absorbé', 'Empoisonné'] },
+      butler: { id: 'butler', name: 'Majordome', team: 'outsider', cdnIcon: `${BOTC_ICON_CDN}butler.png`, firstNight: 38, otherNight: 67, ability: "Chaque nuit, choisissez 1 joueur : demain, vous ne votez que s'il vote.", reminders: ['Maître'] },
+      drunk: { id: 'drunk', name: 'Ivrogne', team: 'outsider', cdnIcon: `${BOTC_ICON_CDN}drunk.png`, firstNight: 0, otherNight: 0, ability: "Vous croyez être un Villageois, mais votre pouvoir est inopérant.", reminders: ['Ivre'] },
+      recluse: { id: 'recluse', name: 'Reclus', team: 'outsider', cdnIcon: `${BOTC_ICON_CDN}recluse.png`, firstNight: 0, otherNight: 0, ability: "Vous pouvez apparaître comme maléfique (Sbire ou Démon), même mort.", reminders: [] },
+      saint: { id: 'saint', name: 'Saint', team: 'outsider', cdnIcon: `${BOTC_ICON_CDN}saint.png`, firstNight: 0, otherNight: 0, ability: "Si vous mourez par exécution, le Bien perd immédiatement.", reminders: [] },
+      klutz: { id: 'klutz', name: 'Maladroit', team: 'outsider', cdnIcon: `${BOTC_ICON_CDN}klutz.png`, firstNight: 0, otherNight: 0, ability: "À votre mort, choisissez un joueur : s'il est maléfique, le Bien perd.", reminders: [] },
+      mutant: { id: 'mutant', name: 'Mutant', team: 'outsider', cdnIcon: `${BOTC_ICON_CDN}mutant.png`, firstNight: 0, otherNight: 0, ability: "Prétendez être un Villageois, sinon vous pourriez être exécuté.", reminders: [] },
+      lunatic: { id: 'lunatic', name: 'Lunatique', team: 'outsider', cdnIcon: `${BOTC_ICON_CDN}lunatic.png`, firstNight: 8, otherNight: 20, ability: "Vous croyez être un Démon, mais non. Le vrai Démon connaît vos choix.", reminders: ['Attaqué'] },
+      poisoner: { id: 'poisoner', name: 'Empoisonneur', team: 'minion', cdnIcon: `${BOTC_ICON_CDN}poisoner.png`, firstNight: 17, otherNight: 7, ability: "Chaque nuit, choisissez un joueur : il est empoisonné.", reminders: ['Empoisonné'] },
+      spy: { id: 'spy', name: 'Espion', team: 'minion', cdnIcon: `${BOTC_ICON_CDN}spy.png`, firstNight: 68, otherNight: 68, ability: "Chaque nuit, vous voyez le Grimoire. Vous pouvez apparaître bon.", reminders: [] },
+      scarletwoman: { id: 'scarletwoman', name: 'Femme Écarlate', team: 'minion', cdnIcon: `${BOTC_ICON_CDN}scarletwoman.png`, firstNight: 0, otherNight: 19, ability: "Si 5 joueurs ou plus en vie et le Démon meurt, vous devenez le Démon.", reminders: ['Est le Démon'] },
+      baron: { id: 'baron', name: 'Baron', team: 'minion', cdnIcon: `${BOTC_ICON_CDN}baron.png`, firstNight: 0, otherNight: 0, ability: "Il y a 2 Étrangers supplémentaires dans la partie. [+2 Étrangers]", reminders: [] },
+      widow: { id: 'widow', name: 'Veuve Noire', team: 'minion', cdnIcon: `${BOTC_ICON_CDN}widow.png`, firstNight: 18, otherNight: 0, ability: "La 1ère nuit, empoisonnez un joueur. 1 bon sait qu'une Veuve est là.", reminders: ['Empoisonné'] },
+      goblin: { id: 'goblin', name: 'Gobelin', team: 'minion', cdnIcon: `${BOTC_ICON_CDN}goblin.png`, firstNight: 0, otherNight: 0, ability: "Si vous revendiquez publiquement être Gobelin et êtes exécuté, le Mal gagne.", reminders: ['Revendiqué'] },
+      imp: { id: 'imp', name: 'Diablotin', team: 'demon', cdnIcon: `${BOTC_ICON_CDN}imp.png`, firstNight: 0, otherNight: 24, ability: "Chaque nuit*, tuez un joueur. Si vous vous tuez, un Sbire devient le Diablotin.", reminders: ['Mort'] },
+      leviathan: { id: 'leviathan', name: 'Léviathan', team: 'demon', cdnIcon: `${BOTC_ICON_CDN}leviathan.png`, firstNight: 0, otherNight: 0, ability: "Si plus d'1 bon est exécuté, le Mal gagne. Après le Jour 5, le Mal gagne.", reminders: ['Jour 1', 'Bons exécutés'] }
+    };
+
+    const PLAYER_DISTRIBUTION = {
+      5: { townsfolk: 3, outsider: 0, minion: 1, demon: 1 },
+      6: { townsfolk: 3, outsider: 1, minion: 1, demon: 1 },
+      7: { townsfolk: 5, outsider: 0, minion: 1, demon: 1 },
+      8: { townsfolk: 5, outsider: 1, minion: 1, demon: 1 },
+      9: { townsfolk: 5, outsider: 2, minion: 1, demon: 1 },
+      10:{ townsfolk: 7, outsider: 0, minion: 2, demon: 1 },
+      11:{ townsfolk: 7, outsider: 1, minion: 2, demon: 1 },
+      12:{ townsfolk: 7, outsider: 2, minion: 2, demon: 1 },
+      13:{ townsfolk: 9, outsider: 0, minion: 3, demon: 1 },
+      14:{ townsfolk: 9, outsider: 1, minion: 3, demon: 1 },
+      15:{ townsfolk: 9, outsider: 2, minion: 3, demon: 1 }
+    };
+
+    const REMINDERS_PRESETS = [
+      { id: 'drunk', label: 'Bourré / Ivre', code: 'IVRE', icon: '🍺', color: 'bg-amber-600', border: 'border-amber-300' },
+      { id: 'poisoned', label: 'Empoisonné', code: 'POIS', icon: '🧪', color: 'bg-emerald-600', border: 'border-emerald-300' },
+      { id: 'redherring', label: 'Red Herring', code: 'REDH', icon: '🔮', color: 'bg-purple-600', border: 'border-purple-300' },
+      { id: 'protected', label: 'Protégé', code: 'PROT', icon: '🛡️', color: 'bg-blue-600', border: 'border-blue-300' },
+      { id: 'dead_night', label: 'Mort ce soir', code: 'MORT', icon: '💀', color: 'bg-red-600', border: 'border-red-300' }
+    ];
+
+    const DAY_BREAKOUT_ROOMS = [
+      { id: 'square', name: 'Place du Village', icon: '🏛️' },
+      { id: 'tavern', name: 'Taverne', icon: '🍺' },
+      { id: 'forest', name: 'Forêt Sombre', icon: '🌲' }
+    ];
+
+    const BOT_NAMES = ['Brockwell', 'Danielle', 'Kapt’n Kadaver', 'Elizabeth', 'Markus', 'Elin', 'Beardy', 'Ginge', 'Conor', 'Rhett'];
+    const BOT_AVATARS = ['🐴', '🐺', '🦉', '🦊', '🦅', '🐗', '🦇', '🐈‍⬛', '🦌', '🗡️'];
+
+    function App() {
+      const [inLobbyScreen, setInLobbyScreen] = useState(true);
+      const [authMode, setAuthMode] = useState('create');
+      const [userPseudo, setUserPseudo] = useState('');
+      const [inputRoomCode, setInputRoomCode] = useState('');
+      const [roomCode, setRoomCode] = useState('RAVENS');
+
+      const [storyteller, setStoryteller] = useState({ name: 'Arif', avatar: '🧙‍♂️', currentRoom: 'square' });
+      const [isStorytellerMode, setIsStorytellerMode] = useState(true);
+      const [selectedScriptId, setSelectedScriptId] = useState('tb');
+      const [isScriptDrawerOpen, setIsScriptDrawerOpen] = useState(false);
+
+      const [phase, setPhase] = useState('day');
+      const [dayNumber, setDayNumber] = useState(1);
+      const [players, setPlayers] = useState([]);
+      const [gameStarted, setGameStarted] = useState(false);
+
+      // Bluffs & Minuteur
+      const [demonBluffs, setDemonBluffs] = useState([null, null, null]);
+      const [dayTimerSeconds, setDayTimerSeconds] = useState(300);
+      const [isTimerRunning, setIsTimerRunning] = useState(false);
+
+      // Modales & Visites
+      const [rolePickerModal, setRolePickerModal] = useState(null);
+      const [reminderPickerModal, setReminderPickerModal] = useState(null);
+      const [visitingCottagePlayer, setVisitingCottagePlayer] = useState(null);
+      const [cottageGuestPlayerId, setCottageGuestPlayerId] = useState(null);
+      const [wikiRoleModal, setWikiRoleModal] = useState(null);
+      const [nightOrderModalOpen, setNightOrderModalOpen] = useState(false);
+      const [nightOrderTab, setNightOrderTab] = useState('first');
+      const [settingsModalOpen, setSettingsModalOpen] = useState(false);
+
+      // Vote & Accusation
+      const [accusationWizard, setAccusationWizard] = useState(null);
+      const [pendingAccusation, setPendingAccusation] = useState(null);
+      const [nomination, setNomination] = useState({ active: false, nominatorId: null, nomineeId: null, clockIndex: -1, isRunning: false, votes: {}, speed: 1600 });
+      const [onTheBlock, setOnTheBlock] = useState(null);
+
+      const currentScript = SCRIPTS_DATA[selectedScriptId] || SCRIPTS_DATA.tb;
+      const officialQuota = PLAYER_DISTRIBUTION[players.length] || null;
+
+      const dynamicQuota = useMemo(() => {
+        if (!officialQuota) return null;
+        let townsfolk = officialQuota.townsfolk;
+        let outsider = officialQuota.outsider;
+        let minion = officialQuota.minion;
+        let demon = officialQuota.demon;
+        if (players.some(p => p.role === 'baron')) {
+          outsider += 2;
+          townsfolk = Math.max(0, townsfolk - 2);
+        }
+        return { townsfolk, outsider, minion, demon, hasBaron: players.some(p => p.role === 'baron') };
+      }, [officialQuota, players]);
+
+      const assignedCounts = useMemo(() => {
+        const counts = { townsfolk: 0, outsider: 0, minion: 0, demon: 0 };
+        players.forEach(p => {
+          if (p.role && ROLES_DB[p.role]) {
+            const team = ROLES_DB[p.role].team;
+            if (counts[team] !== undefined) counts[team]++;
+          }
+        });
+        return counts;
+      }, [players]);
+
+      useEffect(() => {
+        let interval = null;
+        if (phase === 'day' && isTimerRunning && dayTimerSeconds > 0) {
+          interval = setInterval(() => setDayTimerSeconds(s => Math.max(0, s - 1)), 1000);
+        }
+        return () => clearInterval(interval);
+      }, [phase, isTimerRunning, dayTimerSeconds]);
+
+      const addPlayerSeat = (name = null) => {
+        if (players.length >= 15 || gameStarted) return;
+        const nextIdx = players.length;
+        setPlayers(prev => [...prev, {
+          id: Date.now() + Math.random(),
+          name: name || BOT_NAMES[nextIdx % BOT_NAMES.length] || `Joueur ${nextIdx + 1}`,
+          avatar: BOT_AVATARS[nextIdx % BOT_AVATARS.length],
+          role: null, hypothesisRole: null, alive: true, ghostVote: true, reminders: [], inRoom: 'square'
+        }]);
+      };
+
+      const handleAutoDistribute = () => {
+        if (players.length < 5 || gameStarted) return;
+        const dist = PLAYER_DISTRIBUTION[players.length];
+        if (!dist) return;
+        let tT = dist.townsfolk, tO = dist.outsider, tM = dist.minion, tD = dist.demon;
+        const scriptRoles = currentScript.roles.map(id => ROLES_DB[id]).filter(Boolean);
+        const avM = scriptRoles.filter(r => r.team === 'minion');
+        const chosenM = [...avM].sort(() => 0.5 - Math.random()).slice(0, tM);
+        if (chosenM.some(m => m.id === 'baron')) {
+          tO += 2;
+          tT = Math.max(0, tT - 2);
+        }
+        const chosenT = scriptRoles.filter(r => r.team === 'townsfolk').sort(() => 0.5 - Math.random()).slice(0, tT);
+        const chosenO = scriptRoles.filter(r => r.team === 'outsider').sort(() => 0.5 - Math.random()).slice(0, tO);
+        const chosenD = scriptRoles.filter(r => r.team === 'demon').sort(() => 0.5 - Math.random()).slice(0, tD);
+        const pool = [...chosenD, ...chosenM, ...chosenO, ...chosenT].sort(() => 0.5 - Math.random());
+        setPlayers(curr => curr.map((p, idx) => ({ ...p, role: pool[idx]?.id || null })));
+      };
+
+      // VOTE PAR AIGUILLES
+      const nomineeIndex = nomination.nomineeId ? players.findIndex(p => p.id === nomination.nomineeId) : -1;
+      const orderedVoters = useMemo(() => {
+        if (nomineeIndex === -1 || players.length === 0) return [];
+        const arr = [];
+        for (let i = 1; i <= players.length; i++) {
+          arr.push(players[(nomineeIndex + i) % players.length]);
+        }
+        return arr;
+      }, [nomineeIndex, players]);
+
+      useEffect(() => {
+        if (!nomination.active || !nomination.isRunning || orderedVoters.length === 0) return;
+        const timer = setTimeout(() => {
+          setNomination(prev => {
+            const next = prev.clockIndex + 1;
+            if (next >= orderedVoters.length) {
+              const totalVotes = Object.values(prev.votes).filter(Boolean).length;
+              const alive = players.filter(p => p.alive).length;
+              const req = Math.ceil(alive / 2);
+              const nom = players.find(p => p.id === prev.nomineeId);
+              if (totalVotes >= req && nom) {
+                if (!onTheBlock || totalVotes > onTheBlock.votes) {
+                  setOnTheBlock({ playerId: nom.id, playerName: nom.name, votes: totalVotes });
+                }
+              }
+              return { ...prev, isRunning: false, clockIndex: orderedVoters.length - 1 };
+            }
+            return { ...prev, clockIndex: next };
+          });
+        }, nomination.speed);
+        return () => clearTimeout(timer);
+      }, [nomination.active, nomination.isRunning, nomination.clockIndex, orderedVoters]);
+
+      const nomineeAngle = nomineeIndex !== -1 && players.length > 0 ? (nomineeIndex / players.length) * 360 : 0;
+      const currentVoter = nomination.clockIndex >= 0 ? orderedVoters[nomination.clockIndex] : null;
+      const sweeperAngle = currentVoter && players.length > 0 ? (players.findIndex(p => p.id === currentVoter.id) / players.length) * 360 : 0;
+
+      if (inLobbyScreen) {
+        return (
+          <div className="min-h-screen w-full flex items-center justify-center p-4 bg-[#0e0712] text-stone-100 font-sans relative">
+            <div className="w-full max-w-md bg-stone-950/90 border-2 border-amber-600/60 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl">
+              <div className="text-center space-y-2 mb-6">
+                <div className="w-16 h-16 rounded-full bg-purple-950 border-2 border-amber-500/80 flex items-center justify-center text-3xl mx-auto shadow-lg">
+                  😈
+                </div>
+                <h1 className="font-serif font-black text-2xl tracking-widest text-amber-300">BOTC ONLINE</h1>
+                <p className="text-xs text-stone-400 font-serif italic">Place du Village de Ravenswood Bluff</p>
+              </div>
+
+              <div className="flex rounded-xl bg-stone-900 p-1 border border-stone-800 mb-6">
+                <button
+                  onClick={() => setAuthMode('create')}
+                  className={`flex-1 py-2 text-xs font-bold rounded-lg transition flex items-center justify-center gap-1.5 ${authMode === 'create' ? 'bg-amber-600 text-stone-950 font-black' : 'text-stone-400'}`}
+                >
+                  <Icon name="Crown" className="w-3.5 h-3.5" /> Créer (Hôte / MJ)
+                </button>
+                <button
+                  onClick={() => setAuthMode('join')}
+                  className={`flex-1 py-2 text-xs font-bold rounded-lg transition flex items-center justify-center gap-1.5 ${authMode === 'join' ? 'bg-purple-700 text-white font-bold' : 'text-stone-400'}`}
+                >
+                  <Icon name="LogIn" className="w-3.5 h-3.5" /> Rejoindre
+                </button>
+              </div>
+
+              <div className="space-y-4 text-xs">
+                <div>
+                  <label className="block text-stone-300 font-bold mb-1">Votre Pseudo</label>
+                  <input
+                    type="text"
+                    placeholder="Ex: Arif, Éléonore, Markus..."
+                    value={userPseudo}
+                    onChange={(e) => setUserPseudo(e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-xl bg-stone-900 border border-stone-700 text-stone-100 focus:outline-none"
+                  />
+                </div>
+
+                {authMode === 'create' ? (
+                  <div>
+                    <label className="block text-stone-300 font-bold mb-1">Script de départ</label>
+                    <select
+                      value={selectedScriptId}
+                      onChange={(e) => setSelectedScriptId(e.target.value)}
+                      className="w-full px-3 py-2.5 rounded-xl bg-stone-900 border border-stone-700 text-stone-200 focus:outline-none"
+                    >
+                      <option value="tb">Trouble Brewing</option>
+                      <option value="bmr">Bad Moon Rising</option>
+                      <option value="snv">Sects & Violets</option>
+                      <option value="ngj">Teensyville: No Greater Joy</option>
+                      <option value="luf">Teensyville: Laissez un Faire</option>
+                    </select>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-stone-300 font-bold mb-1">Code de la Partie</label>
+                    <input
+                      type="text"
+                      placeholder="Ex: RAVENS"
+                      value={inputRoomCode}
+                      onChange={(e) => setInputRoomCode(e.target.value.toUpperCase())}
+                      className="w-full px-3 py-2.5 rounded-xl bg-stone-900 border border-stone-700 text-amber-300 uppercase font-mono font-bold"
+                    />
+                  </div>
+                )}
+
+                <button
+                  onClick={() => {
+                    const final = userPseudo.trim() || (authMode === 'create' ? 'Conteur' : 'Villageois');
+                    if (authMode === 'create') {
+                      setRoomCode('BLUFFS');
+                      setStoryteller(s => ({ ...s, name: final }));
+                      setIsStorytellerMode(true);
+                    } else {
+                      setRoomCode(inputRoomCode.trim() || 'BLUFFS');
+                      setIsStorytellerMode(false);
+                      addPlayerSeat(final);
+                    }
+                    setInLobbyScreen(false);
+                  }}
+                  className="w-full py-3 rounded-xl font-black bg-gradient-to-r from-amber-600 to-amber-500 text-stone-950 flex items-center justify-center gap-2 shadow-xl"
+                >
+                  <span>{authMode === 'create' ? 'Ouvrir le Grimoire & Créer' : 'Prendre Place au Village'}</span>
+                  <Icon name="ArrowRight" className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      const aliveCount = players.filter(p => p.alive).length;
+      const majorityRequired = Math.ceil(aliveCount / 2);
+
+      return (
+        <div className="min-h-screen w-full flex flex-col font-sans select-none bg-[#100a14] text-stone-100 overflow-hidden relative">
+          
+          {/* HEADER */}
+          <header className="h-12 border-b border-purple-900/40 bg-black/85 px-4 flex items-center justify-between z-40">
+            <div className="flex items-center gap-3">
+              <span className="font-serif font-black tracking-widest text-amber-200 text-sm">BOTC ONLINE</span>
+              <span className="px-2 py-0.5 rounded bg-purple-950 border border-purple-600/40 text-[10px] font-mono text-purple-300 font-bold">{roomCode}</span>
+              
+              {!gameStarted ? (
+                <select
+                  value={selectedScriptId}
+                  onChange={(e) => setSelectedScriptId(e.target.value)}
+                  className="px-2 py-1 rounded bg-stone-900 border border-amber-600/50 text-xs text-amber-300 font-bold focus:outline-none"
+                >
+                  <option value="tb">Trouble Brewing</option>
+                  <option value="bmr">Bad Moon Rising</option>
+                  <option value="snv">Sects & Violets</option>
+                  <option value="ngj">Teensy: No Greater Joy</option>
+                  <option value="luf">Teensy: Laissez un Faire</option>
+                </select>
+              ) : (
+                <span className="text-xs text-amber-300 font-serif font-bold">{currentScript.name}</span>
+              )}
+
+              <button
+                onClick={() => setIsScriptDrawerOpen(true)}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-stone-900 border border-amber-500/60 text-xs text-amber-200 font-bold shadow"
+              >
+                <Icon name="BookOpen" className="w-3.5 h-3.5 text-amber-400" />
+                <span>Liste des Rôles</span>
+              </button>
+            </div>
+
+            <div className="flex items-center gap-3 text-xs">
+              {gameStarted && phase === 'day' && (
+                <div className="flex items-center gap-1.5 bg-stone-900 border border-stone-700 px-2.5 py-1 rounded-xl">
+                  <Icon name="Timer" className={`w-3.5 h-3.5 ${isTimerRunning ? 'text-amber-400' : 'text-stone-400'}`} />
+                  <span className="font-mono font-bold text-amber-200">
+                    {Math.floor(dayTimerSeconds / 60)}:{(dayTimerSeconds % 60).toString().padStart(2, '0')}
+                  </span>
+                  {isStorytellerMode && (
+                    <button onClick={() => setIsTimerRunning(!isTimerRunning)} className="ml-1 text-stone-300 hover:text-amber-300">
+                      <Icon name={isTimerRunning ? "Pause" : "Play"} className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              )}
+
+              <div className="flex items-center gap-1.5 font-bold">
+                <Icon name="Heart" className="w-4 h-4 text-rose-500" />
+                <span>{aliveCount}/{players.length}</span>
+              </div>
+              <div className="flex items-center gap-1.5 font-bold text-amber-300">
+                <Icon name="Gavel" className="w-4 h-4 text-amber-400" />
+                <span>{majorityRequired} maj</span>
+              </div>
+
+              {onTheBlock && (
+                <div className="flex items-center gap-1 bg-red-950 border border-red-500 px-2 py-0.5 rounded-full text-red-300 font-bold">
+                  <Icon name="Skull" className="w-3 h-3" />
+                  <span>{onTheBlock.playerName}</span>
+                </div>
+              )}
+
+              <button
+                onClick={() => setIsStorytellerMode(!isStorytellerMode)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold border flex items-center gap-1 ${isStorytellerMode ? 'bg-amber-950 border-amber-500 text-amber-200' : 'bg-stone-800 border-stone-600 text-stone-300'}`}
+              >
+                <Icon name="Crown" className="w-3.5 h-3.5 text-amber-400" />
+                <span>{isStorytellerMode ? 'MJ' : 'Joueur'}</span>
+              </button>
+
+              <button onClick={() => setNightOrderModalOpen(true)} className="p-1.5 rounded-lg bg-stone-900 border border-stone-700 text-indigo-300">
+                <Icon name="Clock" className="w-3.5 h-3.5" />
+              </button>
+
+              {isStorytellerMode && gameStarted && (
+                <button
+                  onClick={() => {
+                    setPhase(p => p === 'day' ? 'night' : 'day');
+                    if (phase === 'night') setDayNumber(d => d + 1);
+                  }}
+                  className="px-2 py-1 rounded-lg bg-stone-900 border border-stone-700 text-xs text-amber-300 flex items-center gap-1"
+                >
+                  <Icon name={phase === 'day' ? "Sun" : "Moon"} className="w-3.5 h-3.5 text-amber-400" />
+                  <span>{phase === 'day' ? `J${dayNumber}` : `N${dayNumber}`}</span>
+                </button>
+              )}
+
+              <button onClick={() => setSettingsModalOpen(true)} className="p-1.5 rounded-lg bg-stone-900 border border-stone-700 text-stone-300">
+                <Icon name="Settings" className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </header>
+
+          {/* BANDEAU ACCUSATION EN ATTENTE */}
+          {pendingAccusation && (
+            <div className="bg-amber-950/95 border-b-2 border-amber-500 px-4 py-2 z-40 flex items-center justify-between text-xs">
+              <span className="text-amber-200">
+                Accusation : <strong>{pendingAccusation.nominatorName}</strong> accuse <strong className="text-red-400">{pendingAccusation.nomineeName}</strong> !
+              </span>
+              {isStorytellerMode && (
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      setNomination({ active: true, nominatorId: pendingAccusation.nominatorId, nomineeId: pendingAccusation.nomineeId, clockIndex: -1, isRunning: false, votes: {}, speed: 1600 });
+                      setPendingAccusation(null);
+                    }}
+                    className="px-3 py-1 bg-emerald-600 text-white font-bold rounded flex items-center gap-1"
+                  >
+                    <Icon name="Check" className="w-3.5 h-3.5" /> Valider & Lancer
+                  </button>
+                  <button onClick={() => setPendingAccusation(null)} className="px-3 py-1 bg-red-800 text-white font-bold rounded flex items-center gap-1">
+                    <Icon name="X" className="w-3.5 h-3.5" /> Rejeter
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* SALONS DU JOUR */}
+          <div className="min-h-10 bg-stone-950 border-b border-stone-800 px-4 py-1 flex items-center gap-2 overflow-x-auto text-xs z-30">
+            <span className="text-stone-400 font-bold uppercase text-[10px] tracking-wider shrink-0 flex items-center gap-1">
+              <Icon name="Compass" className="w-3.5 h-3.5 text-amber-400" /> Salons :
+            </span>
+            {DAY_BREAKOUT_ROOMS.map(r => (
+              <div key={r.id} className="p-1 px-2.5 rounded-xl border border-stone-800 bg-stone-900/80 flex items-center gap-1.5 cursor-pointer">
+                <span>{r.icon}</span>
+                <span className="text-stone-200 font-bold text-[11px]">{r.name}</span>
+                <span className="text-stone-400 text-[10px]">({players.filter(p => p.inRoom === r.id).length})</span>
+              </div>
+            ))}
+          </div>
+
+          {/* ZONE CENTRALE DU CERCLE */}
+          <div className="flex-1 flex overflow-hidden relative">
+            
+            {/* CONTEUR EN HAUT À GAUCHE */}
+            <div className="absolute top-4 left-4 z-30 flex flex-col items-start gap-1">
+              <div className="w-24 h-24 rounded-2xl bg-stone-950 border-2 border-amber-500/80 flex flex-col items-center justify-center text-4xl shadow-2xl relative">
+                <span>{storyteller.avatar}</span>
+                <div className="absolute bottom-1 right-1 w-6 h-6 rounded-full bg-amber-500 text-stone-950 flex items-center justify-center font-bold text-xs">🦋</div>
+              </div>
+              <div className="px-2.5 py-0.5 rounded-lg bg-black/80 border border-stone-800 text-xs font-bold text-amber-300">
+                {storyteller.name}
+              </div>
+            </div>
+
+            {/* 3 BLUFFS DÉMON */}
+            <div className="absolute bottom-4 left-4 z-30 flex flex-col gap-1">
+              <span className="text-[10px] uppercase font-bold text-rose-400 flex items-center gap-1">
+                <Icon name="Flame" className="w-3 h-3 text-rose-500" /> Bluffs du Démon :
+              </span>
+              <div className="flex items-center gap-2 bg-stone-950/90 border border-rose-900/60 p-2 rounded-2xl shadow-xl">
+                {demonBluffs.map((roleId, bIdx) => {
+                  const roleObj = roleId ? ROLES_DB[roleId] : null;
+                  return (
+                    <div key={bIdx} className="w-12 h-12 rounded-full border-2 border-dashed border-rose-600/80 bg-stone-900 flex items-center justify-center relative shadow-lg">
+                      {roleObj ? (
+                        <img src={roleObj.cdnIcon} alt={roleObj.name} className="w-8 h-8 object-contain" onError={(e) => { e.target.style.display = 'none'; }} />
+                      ) : (
+                        <span className="text-stone-500 text-xs font-bold">—</span>
+                      )}
+                      <span className="absolute -bottom-1 -right-1 w-4 h-4 bg-rose-950 border border-rose-500 text-rose-200 rounded-full text-[9px] font-bold flex items-center justify-center">{bIdx + 1}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* BARRE HÔTE LOBBY */}
+            {isStorytellerMode && !gameStarted && (
+              <div className="absolute bottom-4 left-48 z-30 flex items-center gap-2 bg-stone-950/90 border border-stone-800 p-2 rounded-2xl shadow-2xl">
+                <button onClick={() => addPlayerSeat()} className="px-2.5 py-1.5 rounded-xl bg-indigo-900 border border-indigo-600 text-xs font-bold text-white flex items-center gap-1.5">
+                  <Icon name="UserPlus" className="w-3.5 h-3.5" /> Ajouter Joueur ({players.length}/15)
+                </button>
+                {players.length >= 5 && (
+                  <button onClick={handleAutoDistribute} className="px-2.5 py-1.5 rounded-xl bg-amber-900 border border-amber-500 text-xs font-bold text-amber-200 flex items-center gap-1.5">
+                    <Icon name="Shuffle" className="w-3.5 h-3.5" /> Distribution Auto
+                  </button>
+                )}
+                {players.length >= 5 && (
+                  <button
+                    onClick={() => { setGameStarted(true); setPhase('night'); setDayNumber(1); }}
+                    className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-purple-700 to-indigo-700 border border-purple-400 text-xs font-black text-white flex items-center gap-1.5"
+                  >
+                    <Icon name="Play" className="w-3.5 h-3.5" /> Lancer Partie (Nuit 1)
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* BOUTON ACCUSATION */}
+            {gameStarted && phase === 'day' && !nomination.active && (
+              <div className="absolute bottom-4 right-4 z-30">
+                <button
+                  onClick={() => setAccusationWizard({ step: 1, nominatorId: null, nomineeId: null })}
+                  className="px-4 py-2.5 bg-gradient-to-r from-red-700 to-amber-700 border-2 border-amber-400 rounded-2xl font-bold text-xs flex items-center gap-2 text-white shadow-2xl"
+                >
+                  <Icon name="Gavel" className="w-4 h-4" /> Formuler une Accusation
+                </button>
+              </div>
+            )}
+
+            {/* CERCLE */}
+            <main className="flex-1 flex items-center justify-center relative p-4">
+              {players.length === 0 ? (
+                <div className="text-center p-8 rounded-3xl bg-black/70 border border-purple-900/40 max-w-md shadow-2xl">
+                  <h2 className="font-serif font-bold text-xl text-amber-200 mb-1">Ravenswood Bluff est désert</h2>
+                  <p className="text-xs text-stone-400 mb-4">Le cercle est vide. Ajoutez des joueurs ou invitez des amis.</p>
+                  {isStorytellerMode && (
+                    <button onClick={() => addPlayerSeat()} className="px-4 py-2 bg-amber-600 text-white font-bold rounded-xl text-xs flex items-center gap-2 mx-auto">
+                      <Icon name="UserPlus" className="w-4 h-4" /> Assis le premier joueur
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="relative w-[340px] h-[340px] sm:w-[500px] sm:h-[500px] lg:w-[620px] lg:h-[620px] rounded-full flex items-center justify-center">
+                  
+                  {/* AIGUILLES DE VOTE */}
+                  {nomination.active && (
+                    <>
+                      <div
+                        className="absolute w-2 h-[48%] origin-bottom bottom-1/2 rounded-full pointer-events-none z-10 transition-transform duration-500 ease-out"
+                        style={{ transform: `rotate(${nomineeAngle}deg)`, background: 'linear-gradient(to top, rgba(220,38,38,1), #ef4444)', boxShadow: '0 0 35px 10px rgba(239,68,68,0.95)' }}
+                      >
+                        <div className="w-8 h-8 -ml-[11px] -mt-4 bg-red-600 border-2 border-white rounded-full flex items-center justify-center text-xs">🎯</div>
+                      </div>
+                      {nomination.clockIndex >= 0 && (
+                        <div
+                          className="absolute w-2.5 h-[50%] origin-bottom bottom-1/2 rounded-full pointer-events-none z-20 transition-transform duration-500 ease-out"
+                          style={{ transform: `rotate(${sweeperAngle}deg)`, background: 'linear-gradient(to top, rgba(217,119,6,1), #fbbf24)', boxShadow: '0 0 40px 12px rgba(251,191,36,1)' }}
+                        >
+                          <div className="w-9 h-9 -ml-[13px] -mt-4.5 bg-amber-400 border-2 border-amber-950 rounded-full flex items-center justify-center text-base">✋</div>
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {/* CENTRE */}
+                  <div className="w-44 h-44 sm:w-56 sm:h-56 rounded-full bg-stone-950 border-2 border-amber-700/60 shadow-[0_0_60px_rgba(0,0,0,0.9)] flex flex-col items-center justify-center p-3 text-center z-20">
+                    {nomination.active ? (
+                      <>
+                        <span className="text-[10px] uppercase font-bold text-amber-400">Vote en cours</span>
+                        <div className="text-2xl font-serif font-black text-amber-200 my-1">
+                          ✋ {Object.values(nomination.votes).filter(Boolean).length} / {majorityRequired}
+                        </div>
+                        <div className="flex gap-1.5 mt-1">
+                          <button
+                            onClick={() => setNomination(p => ({ ...p, isRunning: !p.isRunning, clockIndex: p.clockIndex === -1 ? 0 : p.clockIndex }))}
+                            className="px-2.5 py-1 bg-amber-500 text-stone-950 font-bold rounded text-xs"
+                          >
+                            {nomination.isRunning ? 'Pause' : 'Lancer'}
+                          </button>
+                          <button onClick={() => setNomination(p => ({ ...p, active: false }))} className="p-1 bg-stone-800 rounded">
+                            <Icon name="X" className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="text-2xl mb-1">{phase === 'day' ? '☀️' : '🌙'}</div>
+                        <span className="font-serif font-bold text-sm text-amber-200">{gameStarted ? (phase === 'day' ? `Jour ${dayNumber}` : `Nuit ${dayNumber}`) : 'Salon d’attente'}</span>
+                        <span className="text-[10px] text-stone-400 mt-1">{players.length} villageois</span>
+                      </>
+                    )}
+                  </div>
+
+                  {/* SIÈGES */}
+                  {players.map((p, index) => {
+                    const angle = (index / players.length) * 2 * Math.PI - Math.PI / 2;
+                    const radius = 43;
+                    const left = `${50 + radius * Math.cos(angle)}%`;
+                    const top = `${50 + radius * Math.sin(angle)}%`;
+                    const roleObj = p.role ? ROLES_DB[p.role] : null;
+
+                    return (
+                      <div key={p.id} style={{ left, top }} className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center z-20 group">
+                        
+                        {/* MAIN LEVÉE */}
+                        {nomination.active && (
+                          <div
+                            onClick={() => setNomination(curr => ({ ...curr, votes: { ...curr.votes, [p.id]: !curr.votes[p.id] } }))}
+                            className={`mb-1 px-2.5 py-0.5 rounded-full text-[11px] font-black cursor-pointer shadow ${nomination.votes[p.id] ? 'bg-amber-400 text-stone-950' : 'bg-stone-900 text-stone-400'}`}
+                          >
+                            {nomination.votes[p.id] ? '✋ OUI' : '— Non'}
+                          </div>
+                        )}
+
+                        {/* AVATAR / COTTAGE */}
+                        <div
+                          onClick={() => { if (isStorytellerMode && phase === 'night') setVisitingCottagePlayer(p); }}
+                          className={`w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-stone-950 border-2 overflow-hidden shadow-2xl mb-1.5 flex flex-col items-center justify-center text-3xl sm:text-4xl relative ${!p.alive ? 'border-red-600 grayscale' : 'border-stone-700'}`}
+                        >
+                          <span>{p.avatar}</span>
+                          {!p.alive && (
+                            <div className="absolute inset-0 bg-black/85 flex flex-col items-center justify-center">
+                              <Icon name="Skull" className="w-8 h-8 text-red-500" />
+                              <span className="text-[9px] font-bold text-red-400 uppercase">Défunt</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* JETON DE RÔLE & RAPPELS SANS SUPERPOSITION */}
+                        <div className="relative flex items-center justify-center">
+                          <div
+                            onClick={() => setRolePickerModal({ seatIndex: index, isPlayerHypothesis: !isStorytellerMode })}
+                            className="w-14 h-14 sm:w-16 sm:h-16 rounded-full border-2 border-amber-600/70 bg-stone-900 flex items-center justify-center cursor-pointer shadow-2xl relative"
+                          >
+                            {isStorytellerMode && roleObj ? (
+                              <img src={roleObj.cdnIcon} alt={roleObj.name} className="w-10 h-10 object-contain" onError={(e) => { e.target.style.display = 'none'; }} />
+                            ) : (
+                              <span className="text-stone-500 text-xs font-serif font-bold">Vide</span>
+                            )}
+                          </div>
+
+                          {/* MINI-RAPPELS DÉPORTÉS */}
+                          <div className="absolute left-full ml-1.5 top-1/2 -translate-y-1/2 flex flex-col gap-1 z-30">
+                            {p.reminders.map((rem, rIdx) => (
+                              <div key={rIdx} className="h-6 px-1.5 rounded bg-amber-600 border border-amber-300 text-[9px] font-black text-white flex items-center gap-1 shadow">
+                                <span>{rem}</span>
+                              </div>
+                            ))}
+                            {isStorytellerMode && (
+                              <button onClick={() => setReminderPickerModal(index)} className="w-6 h-6 rounded bg-stone-900 border border-stone-500 text-white flex items-center justify-center text-xs font-bold">
+                                +
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* NOM */}
+                        <div className="mt-1 px-2.5 py-0.5 rounded-lg bg-black/90 border border-stone-800 text-[11px] font-bold text-stone-200 truncate max-w-[120px]">
+                          {p.name}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </main>
+
+            {/* SCRIPT LATÉRAL */}
+            <aside className={`w-80 border-l border-amber-900/40 bg-[#140b15] p-4 flex flex-col justify-between transition-all duration-300 z-30 ${isScriptDrawerOpen ? 'mr-0' : '-mr-80'}`}>
+              <div className="flex items-center justify-between border-b border-stone-800 pb-2 mb-3">
+                <h3 className="font-serif font-bold text-amber-200">{currentScript.name}</h3>
+                <button onClick={() => setIsScriptDrawerOpen(false)} className="text-stone-400 hover:text-white">
+                  <Icon name="X" className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto space-y-2 pr-1 text-xs">
+                {currentScript.roles.map(id => ROLES_DB[id]).filter(Boolean).map(r => (
+                  <div key={r.id} onClick={() => setWikiRoleModal(r)} className="p-2 rounded-lg bg-stone-900 border border-stone-800 flex items-center justify-between cursor-pointer">
+                    <div className="flex items-center gap-2">
+                      <img src={r.cdnIcon} alt={r.name} className="w-5 h-5 object-contain" onError={(e) => { e.target.style.display = 'none'; }} />
+                      <span className="font-semibold text-stone-200">{r.name}</span>
+                    </div>
+                    <Icon name="Info" className="w-3.5 h-3.5 text-stone-500" />
+                  </div>
+                ))}
+              </div>
+            </aside>
+          </div>
+
+          {/* MODALE VISITE COTTAGE DE NUIT */}
+          {visitingCottagePlayer && (
+            <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 z-50">
+              <div className="bg-stone-950 border-2 border-indigo-500 rounded-3xl max-w-lg w-full p-6 space-y-4 shadow-2xl">
+                <div className="flex items-center justify-between border-b border-stone-800 pb-2">
+                  <h3 className="font-serif font-bold text-lg text-indigo-300">Cottage de {visitingCottagePlayer.name}</h3>
+                  <button onClick={() => setVisitingCottagePlayer(null)} className="text-stone-400 hover:text-white">
+                    <Icon name="X" className="w-5 h-5" />
+                  </button>
+                </div>
+                <div className="p-3 bg-stone-900 rounded-xl text-xs space-y-1">
+                  <span className="text-stone-400">Rôle : </span>
+                  <span className="font-bold text-amber-300">{visitingCottagePlayer.role ? ROLES_DB[visitingCottagePlayer.role]?.name : 'Sans rôle'}</span>
+                  {visitingCottagePlayer.role && (
+                    <p className="text-stone-300 italic pt-1">« {ROLES_DB[visitingCottagePlayer.role]?.ability} »</p>
+                  )}
+                </div>
+                <div className="text-right">
+                  <button onClick={() => setVisitingCottagePlayer(null)} className="px-4 py-2 bg-indigo-600 font-bold rounded-xl text-xs text-white">Quitter</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* MODALE ATTRIBUTION RÔLE AVEC QUOTAS OFFICIELS */}
+          {rolePickerModal && (
+            <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50">
+              <div className="bg-stone-950 border-2 border-amber-600 rounded-3xl max-w-2xl w-full p-5 shadow-2xl space-y-4 max-h-[85vh] flex flex-col">
+                <div className="flex items-center justify-between border-b border-stone-800 pb-2">
+                  <h3 className="font-serif font-bold text-base text-amber-200">
+                    Attribuer un rôle à {players[rolePickerModal.seatIndex]?.name}
+                  </h3>
+                  <button onClick={() => setRolePickerModal(null)} className="text-stone-400 hover:text-white">
+                    <Icon name="X" className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* BANDEAU QUOTAS */}
+                {dynamicQuota && (
+                  <div className="grid grid-cols-4 gap-2 text-xs">
+                    <div className="p-2 rounded bg-stone-900 border border-stone-800 text-center">
+                      <span className="text-blue-400 font-bold block">Villageois</span>
+                      <span className="font-mono">{assignedCounts.townsfolk}/{dynamicQuota.townsfolk}</span>
+                    </div>
+                    <div className="p-2 rounded bg-stone-900 border border-stone-800 text-center">
+                      <span className="text-amber-400 font-bold block">Étrangers</span>
+                      <span className="font-mono">{assignedCounts.outsider}/{dynamicQuota.outsider}</span>
+                    </div>
+                    <div className="p-2 rounded bg-stone-900 border border-stone-800 text-center">
+                      <span className="text-purple-400 font-bold block">Sbires</span>
+                      <span className="font-mono">{assignedCounts.minion}/{dynamicQuota.minion}</span>
+                    </div>
+                    <div className="p-2 rounded bg-stone-900 border border-stone-800 text-center">
+                      <span className="text-red-400 font-bold block">Démon</span>
+                      <span className="font-mono">{assignedCounts.demon}/{dynamicQuota.demon}</span>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex-1 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 gap-2 pr-1">
+                  {currentScript.roles.map(id => ROLES_DB[id]).filter(Boolean).map(r => (
+                    <button
+                      key={r.id}
+                      onClick={() => {
+                        setPlayers(prev => prev.map((p, idx) => idx === rolePickerModal.seatIndex ? { ...p, role: r.id } : p));
+                        setRolePickerModal(null);
+                      }}
+                      className="p-2 rounded-xl bg-stone-900 border border-stone-800 hover:border-amber-400 flex items-center gap-2 text-left"
+                    >
+                      <img src={r.cdnIcon} alt={r.name} className="w-7 h-7 object-contain" onError={(e) => { e.target.style.display = 'none'; }} />
+                      <div className="truncate">
+                        <div className="font-bold text-xs text-stone-200">{r.name}</div>
+                        <div className="text-[10px] text-stone-500 uppercase">{r.team}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* MODALE RAPPEL */}
+          {reminderPickerModal !== null && (
+            <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50">
+              <div className="bg-stone-950 border-2 border-amber-600 rounded-3xl max-w-sm w-full p-5 space-y-3 shadow-2xl">
+                <div className="flex items-center justify-between border-b border-stone-800 pb-2">
+                  <h4 className="font-serif font-bold text-base text-amber-200">Ajouter un rappel</h4>
+                  <button onClick={() => setReminderPickerModal(null)} className="text-stone-400 hover:text-white">
+                    <Icon name="X" className="w-5 h-5" />
+                  </button>
+                </div>
+                <div className="space-y-1.5">
+                  {REMINDERS_PRESETS.map(preset => (
+                    <button
+                      key={preset.id}
+                      onClick={() => {
+                        setPlayers(prev => prev.map((p, idx) => idx === reminderPickerModal ? { ...p, reminders: [...p.reminders, preset.label] } : p));
+                        setReminderPickerModal(null);
+                      }}
+                      className="w-full p-2 rounded-xl bg-stone-900 border border-stone-800 hover:border-amber-400 flex items-center gap-2 text-left text-xs"
+                    >
+                      <span className="text-lg">{preset.icon}</span>
+                      <span className="font-bold text-stone-200">{preset.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* MODALE ASSISTANT ACCUSATION */}
+          {accusationWizard && (
+            <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50">
+              <div className="bg-stone-950 border-2 border-red-600 rounded-2xl max-w-md w-full p-5 shadow-2xl space-y-4">
+                <div className="flex items-center justify-between border-b border-stone-800 pb-2">
+                  <h3 className="font-serif font-bold text-base text-amber-200">
+                    {accusationWizard.step === 1 ? 'Qui accuse ?' : 'Qui est accusé ?'}
+                  </h3>
+                  <button onClick={() => setAccusationWizard(null)} className="text-stone-400 hover:text-white">
+                    <Icon name="X" className="w-5 h-5" />
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-2 max-h-60 overflow-y-auto pr-1">
+                  {players.map(p => (
+                    <button
+                      key={p.id}
+                      onClick={() => {
+                        if (accusationWizard.step === 1) {
+                          setAccusationWizard(w => ({ ...w, step: 2, nominatorId: p.id }));
+                        } else {
+                          const nominator = players.find(pl => pl.id === accusationWizard.nominatorId);
+                          setPendingAccusation({ nominatorId: nominator.id, nomineeId: p.id, nominatorName: nominator.name, nomineeName: p.name });
+                          setAccusationWizard(null);
+                        }
+                      }}
+                      className="p-2 rounded-xl bg-stone-900 border border-stone-800 hover:border-amber-400 text-left text-xs"
+                    >
+                      <span className="text-lg">{p.avatar}</span>
+                      <div className="font-bold text-stone-200 mt-1">{p.name}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* MODALE ORDRE DE NUIT */}
+          {nightOrderModalOpen && (
+            <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50">
+              <div className="bg-stone-950 border-2 border-indigo-600 rounded-3xl max-w-md w-full p-5 shadow-2xl space-y-3 max-h-[85vh] flex flex-col">
+                <div className="flex items-center justify-between border-b border-stone-800 pb-2">
+                  <h4 className="font-serif font-bold text-base text-indigo-200">Ordre de Réveil Nocturne</h4>
+                  <button onClick={() => setNightOrderModalOpen(false)} className="text-stone-400 hover:text-white">
+                    <Icon name="X" className="w-5 h-5" />
+                  </button>
+                </div>
+                <div className="flex rounded-xl bg-stone-900 p-1 border border-stone-800 text-xs">
+                  <button onClick={() => setNightOrderTab('first')} className={`flex-1 py-1.5 rounded-lg font-bold ${nightOrderTab === 'first' ? 'bg-indigo-600 text-white' : 'text-stone-400'}`}>Première Nuit</button>
+                  <button onClick={() => setNightOrderTab('other')} className={`flex-1 py-1.5 rounded-lg font-bold ${nightOrderTab === 'other' ? 'bg-indigo-600 text-white' : 'text-stone-400'}`}>Autres Nuits</button>
+                </div>
+                <div className="flex-1 overflow-y-auto space-y-1.5 pr-1 text-xs">
+                  {currentScript.roles.map(id => ROLES_DB[id]).filter(r => r && (nightOrderTab === 'first' ? r.firstNight > 0 : r.otherNight > 0)).sort((a,b) => (nightOrderTab === 'first' ? a.firstNight - b.firstNight : a.otherNight - b.otherNight)).map((role, idx) => (
+                    <div key={role.id} className="p-2 rounded-xl bg-stone-900 border border-stone-800 flex items-center gap-2">
+                      <span className="w-5 h-5 rounded-full bg-indigo-950 text-indigo-300 font-mono text-[10px] font-bold flex items-center justify-center">{idx + 1}</span>
+                      <img src={role.cdnIcon} alt={role.name} className="w-6 h-6 object-contain" onError={(e) => { e.target.style.display = 'none'; }} />
+                      <span className="font-bold text-stone-200">{role.name}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* MODALE WIKI */}
+          {wikiRoleModal && (
+            <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50">
+              <div className="bg-stone-950 border-2 border-amber-600 rounded-3xl max-w-md w-full p-6 space-y-3 shadow-2xl">
+                <div className="flex items-center justify-between border-b border-stone-800 pb-2">
+                  <div className="flex items-center gap-2">
+                    <img src={wikiRoleModal.cdnIcon} alt={wikiRoleModal.name} className="w-8 h-8 object-contain" onError={(e) => { e.target.style.display = 'none'; }} />
+                    <h3 className="font-serif font-black text-lg text-amber-200">{wikiRoleModal.name}</h3>
+                  </div>
+                  <button onClick={() => setWikiRoleModal(null)} className="text-stone-400 hover:text-white">
+                    <Icon name="X" className="w-5 h-5" />
+                  </button>
+                </div>
+                <div className="text-xs text-stone-300 space-y-2">
+                  <p className="italic font-serif">« {wikiRoleModal.ability} »</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* MODALE PARAMÈTRES */}
+          {settingsModalOpen && (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+              <div className="bg-stone-950 border-2 border-stone-700 rounded-2xl max-w-sm w-full p-4 space-y-3 text-xs shadow-2xl">
+                <div className="flex items-center justify-between border-b border-stone-800 pb-2">
+                  <h4 className="font-serif font-bold text-base text-amber-200">Paramètres</h4>
+                  <button onClick={() => setSettingsModalOpen(false)} className="text-stone-400 hover:text-white">
+                    <Icon name="X" className="w-4 h-4" />
+                  </button>
+                </div>
+                <button
+                  onClick={() => { setInLobbyScreen(true); setSettingsModalOpen(false); }}
+                  className="w-full py-2 bg-red-950 text-red-200 rounded-lg font-bold flex items-center justify-center gap-1"
+                >
+                  <Icon name="LogOut" className="w-3.5 h-3.5" /> Quitter la partie
+                </button>
+              </div>
+            </div>
+          )}
+
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
