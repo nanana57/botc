@@ -357,6 +357,10 @@
       const [currentDayRoom, setCurrentDayRoom] = useState('square');
       const [pendingInvite, setPendingInvite] = useState(null);
       const [customPrivateRooms, setCustomPrivateRooms] = useState([]);
+      const [visitingCottagePlayer, setVisitingCottagePlayer] = useState(null);
+      const [cottageGuestPlayerId, setCottageGuestPlayerId] = useState(null);
+      const [cottageChatMessages, setCottageChatMessages] = useState([]);
+      const [cottageInputText, setCottageInputText] = useState('');
 
       // 7. NETTOYAGE AUTOMATIQUE DES SALONS D'APARTÉ VIDES
       useEffect(() => {
@@ -370,9 +374,13 @@
 
       // --- MODALES ---
       const [rolePickerModal, setRolePickerModal] = useState(null);
+      const [reminderPickerModal, setReminderPickerModal] = useState(null);
       const [wikiRoleModal, setWikiRoleModal] = useState(null);
       const [nightOrderModalOpen, setNightOrderModalOpen] = useState(false);
+      const [nightOrderTab, setNightOrderTab] = useState('first');
       const [settingsModalOpen, setSettingsModalOpen] = useState(false);
+      const [victoryModal, setVictoryModal] = useState(null);
+      const [switchStorytellerModalOpen, setSwitchStorytellerModalOpen] = useState(false);
 
       // --- 4. ACCUSATION ET VOTE (DOUBLE AIGUILLE FLUIDE) ---
       const [accusationWizard, setAccusationWizard] = useState(null);
@@ -764,25 +772,6 @@
               const aliveTotal = playersRef.current.filter(p => p.alive).length;
               const required = Math.ceil(aliveTotal / 2);
               const nominee = playersRef.current.find(p => p.id === prev.nomineeId);
-              const nominator = playersRef.current.find(p => p.id === prev.nominatorId);
-
-              // 8. ENREGISTREMENT DANS L'HISTORIQUE DES VOTES DU MJ
-              const voteRecord = {
-                day: dayNumber,
-                nominatorName: nominator?.name || 'Inconnu',
-                nomineeName: nominee?.name || 'Inconnu',
-                votesCount: totalVotes,
-                majorityRequired: required,
-                voters: playersRef.current.map(p => ({
-                  name: p.name,
-                  voted: Boolean(prev.votes && prev.votes[p.id])
-                }))
-              };
-              setVoteHistory(vh => {
-                const updated = [...vh, voteRecord];
-                broadcastGameState(playersRef.current, phase, gameStarted, { voteHistory: updated });
-                return updated;
-              });
 
               if (totalVotes >= required && nominee) {
                 if (!onTheBlock || totalVotes > onTheBlock.votes) {
@@ -792,6 +781,36 @@
                 }
               }
 
+              // Consommation du vote fantôme
+              setPlayers(curr => curr.map(p => {
+                if (!p.alive && prev.votes && prev.votes[p.id]) {
+                  return { ...p, ghostVote: false };
+                }
+                return p;
+              }));
+
+              // 8. ENREGISTREMENT DANS L'HISTORIQUE DES VOTES POUR LE MJ
+              if (nominee) {
+                const nominator = playersRef.current.find(p => p.id === prev.nominatorId);
+                const votersList = playersRef.current.map(p => ({
+                  id: p.id,
+                  name: p.name,
+                  voted: Boolean(prev.votes && prev.votes[p.id])
+                }));
+                const newRecord = {
+                  day: dayNumber,
+                  nominatorName: nominator ? nominator.name : 'Inconnu',
+                  nomineeName: nominee.name,
+                  votesCount: totalVotes,
+                  majorityRequired: required,
+                  voters: votersList
+                };
+                setVoteHistory(vh => [...vh, newRecord]);
+                broadcastGameState(playersRef.current, phase, gameStarted, {
+                  voteHistory: [...voteHistory, newRecord]
+                });
+              }
+
               return { ...prev, isRunning: false, clockIndex: -1 };
             }
             return { ...prev, clockIndex: nextIdx };
@@ -799,7 +818,24 @@
         }, nomination.speed || 1600);
 
         return () => clearTimeout(timer);
-      }, [nomination.active, nomination.isRunning, nomination.clockIndex, orderedVoters, onTheBlock, dayNumber]);
+      }, [nomination.active, nomination.isRunning, nomination.clockIndex, orderedVoters, onTheBlock, dayNumber, voteHistory, phase, gameStarted]);
+
+      const handleApproveAccusation = () => {
+        if (!pendingAccusation) return;
+        playSound('bell');
+        const newNom = {
+          active: true,
+          nominatorId: pendingAccusation.nominatorId,
+          nomineeId: pendingAccusation.nomineeId,
+          clockIndex: -1,
+          isRunning: false,
+          votes: {},
+          speed: 1600
+        };
+        setNomination(newNom);
+        setPendingAccusation(null);
+        broadcastGameState(playersRef.current, phase, gameStarted, { nomination: newNom });
+      };
 
       const togglePlayerLife = (playerId) => {
         const updated = playersRef.current.map(p => p.id === playerId ? { ...p, alive: !p.alive } : p);
@@ -818,15 +854,99 @@
         broadcastGameState(updated, phase, gameStarted, { onTheBlock: null, nomination: newNom });
       };
 
-      const changeUserRoom = (roomId) => {
-        setCurrentDayRoom(roomId);
-        if (!isStorytellerMode && currentUserId) {
-          const updated = playersRef.current.map(p => p.id === currentUserId ? { ...p, inRoom: roomId } : p);
-          setPlayers(updated);
-          broadcastGameState(updated);
-        } else {
-          setStoryteller(s => ({ ...s, currentRoom: roomId }));
-        }
+      const sendRoomInvite = (targetPlayer, explicitRoomId = null, explicitRoomName = null) => {
+        const customRoomId = explicitRoomId || `private_${Date.now()}`;
+        const roomName = explicitRoomName || `Aparté avec ${targetPlayer.name}`;
+        setPendingInvite({
+          fromPlayerName: isStorytellerMode ? storyteller.name : 'Un villageois',
+          toPlayerId: targetPlayer.id,
+          roomName,
+          roomId: customRoomId
+        });
+        setCustomPrivateRooms(prev => {
+          if (prev.some(r => r.id === customRoomId)) return prev;
+          return [...prev, { id: customRoomId, name: roomName, icon: '🔒' }];
+        });
+        playSound('bell');
+      };
+
+      const acceptInvite = () => {
+        if (!pendingInvite) return;
+        changeUserRoom(pendingInvite.roomId);
+        setPendingInvite(null);
+      };
+
+      const shufflePlayerSeats = () => {
+        if (players.length < 2) return;
+        const updated = [...playersRef.current].sort(() => 0.5 - Math.random());
+        setPlayers(updated);
+        broadcastGameState(updated);
+        playSound('bell');
+      };
+
+      const handlePromoteToStoryteller = (newStorytellerPlayer) => {
+        const demotedStorytellerPlayer = {
+          id: Date.now() + Math.random(),
+          name: storyteller.name,
+          avatar: storyteller.avatar,
+          role: null,
+          hypothesisRole: null,
+          alive: true,
+          ghostVote: true,
+          reminders: [],
+          inRoom: 'square',
+          micActive: true
+        };
+
+        const updatedSt = {
+          name: newStorytellerPlayer.name,
+          avatar: newStorytellerPlayer.avatar,
+          cameraActive: false,
+          micActive: true,
+          currentRoom: 'square'
+        };
+
+        setStoryteller(updatedSt);
+
+        const updatedPlayers = [
+          ...playersRef.current.filter(p => p.id !== newStorytellerPlayer.id),
+          demotedStorytellerPlayer
+        ];
+
+        setPlayers(updatedPlayers);
+        setSwitchStorytellerModalOpen(false);
+        broadcastGameState(updatedPlayers, phase, gameStarted);
+        playSound('bell');
+      };
+
+      const resetGameForRematch = () => {
+        setGameStarted(false);
+        setPhase('day');
+        setDayNumber(1);
+        setRolesDistributedToPlayers(false);
+        setNomination({ active: false, nominatorId: null, nomineeId: null, clockIndex: -1, isRunning: false, votes: {}, speed: 1600 });
+        setOnTheBlock(null);
+        setVictoryModal(null);
+        setRevealedSeats({});
+        setVisitingCottagePlayer(null);
+        setCottageGuestPlayerId(null);
+        setDemonBluffs([null, null, null]);
+        setDayTimerSeconds(300);
+        setIsTimerRunning(false);
+
+        const updated = playersRef.current.map(p => ({
+          ...p,
+          role: null,
+          hypothesisRole: null,
+          alive: true,
+          ghostVote: true,
+          reminders: [],
+          inRoom: 'square'
+        }));
+
+        setPlayers(updated);
+        broadcastGameState(updated, 'day', false);
+        playSound('bell');
       };
 
       const aliveCount = players.filter(p => p.alive).length;
@@ -1564,8 +1684,15 @@
 
                         {/* CARRE EMOJI / WEBCAM */}
                         <div
-                          className={`relative w-12 h-12 sm:w-16 sm:h-16 rounded-2xl bg-stone-950 border-2 overflow-hidden shadow-2xl mb-1 transition ${
-                            isMe ? 'ring-2 ring-amber-400/80' : ''
+                          onClick={() => {
+                            if (isStorytellerMode && phase === 'night') {
+                              setVisitingCottagePlayer(p);
+                            }
+                          }}
+                          className={`relative w-12 h-12 sm:w-16 sm:h-16 rounded-2xl bg-stone-950 border-2 overflow-hidden shadow-2xl mb-1 transition cursor-pointer ${
+                            phase === 'night' && isStorytellerMode
+                              ? 'border-indigo-400 ring-2 ring-indigo-500/80 hover:scale-105'
+                              : isMe ? 'ring-2 ring-amber-400/80' : ''
                           } ${
                             isNominee
                               ? 'border-red-500 ring-4 ring-red-500/80 animate-pulse'
@@ -1573,6 +1700,7 @@
                               ? 'border-amber-400 ring-4 ring-amber-400/80'
                               : 'border-stone-700 hover:border-amber-500'
                           }`}
+                          title={phase === 'night' && isStorytellerMode ? `Entrer dans le cottage de ${p.name}` : ''}
                         >
                           {isMe && webcamStream ? (
                             <video ref={playerVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
@@ -1588,6 +1716,10 @@
                               <span className="text-[7px] font-bold text-red-400 tracking-wider uppercase">Défunt</span>
                             </div>
                           )}
+
+                          <div className="absolute top-0.5 right-0.5 bg-black/80 px-1 py-0.2 rounded text-[8px] border border-stone-700 text-stone-300 font-bold">
+                            {phase === 'night' ? '🏠' : (DAY_BREAKOUT_ROOMS.find(r => r.id === p.inRoom)?.icon || '🔒')}
+                          </div>
                         </div>
 
                         {/* JETON DE RÔLE : 3. AFFICHAGE DE SON PROPRE RÔLE SECRET */}
@@ -1631,6 +1763,28 @@
 
                         <div className="mt-0.5 px-1.5 py-0.2 rounded-md bg-black/90 border border-stone-800 text-center shadow max-w-[90px]">
                           <div className="text-[9px] sm:text-[10px] font-bold text-stone-200 truncate">{p.name}</div>
+                        </div>
+
+                        {/* ACTIONS RAPIDES AU SURVOL (VIE / APARTÉ) */}
+                        <div className="flex items-center gap-1 mt-0.5 opacity-0 group-hover:opacity-100 transition">
+                          {isStorytellerMode && (
+                            <button
+                              onClick={() => togglePlayerLife(p.id)}
+                              className={`p-0.5 rounded text-[9px] border shadow ${
+                                p.alive ? 'bg-red-950 border-red-600 text-red-200 hover:bg-red-900' : 'bg-emerald-950 border-emerald-600 text-emerald-200 hover:bg-emerald-900'
+                              }`}
+                              title={p.alive ? 'Tuer ce joueur' : 'Ressusciter ce joueur'}
+                            >
+                              <Icon name={p.alive ? "Skull" : "Heart"} className="w-2.5 h-2.5" />
+                            </button>
+                          )}
+                          <button
+                            onClick={() => sendRoomInvite(p)}
+                            className="p-0.5 rounded bg-stone-900 hover:bg-indigo-900 border border-stone-700 text-stone-300 hover:text-white text-[9px] shadow"
+                            title="Inviter en aparté"
+                          >
+                            <Icon name="UserPlus" className="w-2.5 h-2.5" />
+                          </button>
                         </div>
                       </div>
                     );
@@ -1921,6 +2075,242 @@
             </div>
           )}
 
+          {/* MODALE : VISITE DU COTTAGE DE NUIT PAR LE MJ (VOCAL PRIVÉ & TCHAT) */}
+          {visitingCottagePlayer && (
+            <div className="fixed inset-0 bg-black/95 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in">
+              <div className="bg-stone-950 border-2 border-indigo-500 rounded-3xl max-w-lg w-full p-5 shadow-2xl space-y-3">
+                <div className="flex items-center justify-between border-b border-stone-800 pb-2">
+                  <div className="flex items-center gap-2">
+                    <div className="text-2xl bg-indigo-950 p-2 rounded-xl border border-indigo-500">
+                      🏠
+                    </div>
+                    <div>
+                      <h3 className="font-serif font-bold text-base text-indigo-300 flex items-center gap-1.5">
+                        <span>Cottage de {visitingCottagePlayer.name}</span>
+                        <span className="px-1.5 py-0.2 rounded-full bg-emerald-950 border border-emerald-500 text-emerald-300 text-[9px] font-bold">
+                          Vocal Isolé
+                        </span>
+                      </h3>
+                      <p className="text-[10px] text-stone-400">
+                        Seuls les occupants de ce cottage s'entendent. Le village dort.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => { setVisitingCottagePlayer(null); setCottageGuestPlayerId(null); }}
+                    className="text-stone-400 hover:text-white"
+                  >
+                    <Icon name="X" className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="p-2.5 bg-stone-900 rounded-xl border border-stone-800 space-y-1.5">
+                  <span className="text-[9px] uppercase font-bold text-indigo-400 block">Présents dans la chambre :</span>
+                  <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                    <span className="px-2 py-1 rounded-lg bg-amber-950 border border-amber-600 text-amber-200 font-bold">
+                      🧙‍♂️ {storyteller.name} (MJ)
+                    </span>
+                    <span className="px-2 py-1 rounded-lg bg-indigo-950 border border-indigo-500 text-indigo-200 font-bold">
+                      {visitingCottagePlayer.avatar} {visitingCottagePlayer.name}
+                    </span>
+                    {cottageGuestPlayerId && (() => {
+                      const guest = players.find(p => p.id === cottageGuestPlayerId);
+                      if (!guest) return null;
+                      return (
+                        <span className="px-2 py-1 rounded-lg bg-purple-950 border border-purple-500 text-purple-200 font-bold flex items-center gap-1">
+                          <span>{guest.avatar} {guest.name} (Invité)</span>
+                          <button onClick={() => setCottageGuestPlayerId(null)} className="text-stone-400 hover:text-red-400">
+                            <Icon name="X" className="w-3 h-3" />
+                          </button>
+                        </span>
+                      );
+                    })()}
+                  </div>
+                </div>
+
+                <div className="p-2.5 bg-stone-900 rounded-xl border border-stone-800 text-xs space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-stone-400">Rôle réel du joueur :</span>
+                    <span className="font-bold text-amber-300">
+                      {visitingCottagePlayer.role ? ROLES_DB[visitingCottagePlayer.role]?.name : 'Aucun rôle'}
+                    </span>
+                  </div>
+                  {visitingCottagePlayer.role && ROLES_DB[visitingCottagePlayer.role]?.ability && (
+                    <p className="text-stone-300 italic text-[10px] leading-relaxed pt-1 border-t border-stone-800">
+                      « {ROLES_DB[visitingCottagePlayer.role].ability} »
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[9px] uppercase font-bold text-stone-400">
+                    Convoquer un autre joueur dans ce cottage (ex: Démon & Sbires) :
+                  </label>
+                  <select
+                    value={cottageGuestPlayerId || ''}
+                    onChange={(e) => setCottageGuestPlayerId(e.target.value ? Number(e.target.value) || e.target.value : null)}
+                    className="w-full px-2 py-1.5 bg-stone-900 border border-stone-700 rounded-xl text-xs text-white focus:outline-none"
+                  >
+                    <option value="">-- Convoquer un invité --</option>
+                    {players.filter(p => p.id !== visitingCottagePlayer.id).map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} ({p.role ? ROLES_DB[p.role]?.name : 'Sans rôle'})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Tchat secret nocturne */}
+                <div className="space-y-1.5 pt-1 border-t border-stone-800">
+                  <span className="text-[9px] uppercase font-bold text-stone-400 block">Messages silencieux de la nuit :</span>
+                  <div className="h-20 bg-stone-950 rounded-xl p-2 border border-stone-800 overflow-y-auto space-y-1 text-[11px]">
+                    {cottageChatMessages.length === 0 ? (
+                      <span className="text-stone-600 italic">Aucun message chuchoté...</span>
+                    ) : (
+                      cottageChatMessages.map((msg, mIdx) => (
+                        <div key={mIdx} className="text-stone-300">
+                          <strong className="text-amber-400">{msg.sender} :</strong> {msg.text}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  <div className="flex gap-1.5">
+                    <input
+                      type="text"
+                      placeholder="Chuchoter discrètement..."
+                      value={cottageInputText}
+                      onChange={(e) => setCottageInputText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && cottageInputText.trim()) {
+                          setCottageChatMessages(prev => [...prev, { sender: isStorytellerMode ? storyteller.name : 'Moi', text: cottageInputText.trim() }]);
+                          setCottageInputText('');
+                        }
+                      }}
+                      className="flex-1 px-2.5 py-1 bg-stone-900 border border-stone-700 rounded-lg text-xs text-white focus:outline-none"
+                    />
+                    <button
+                      onClick={() => {
+                        if (!cottageInputText.trim()) return;
+                        setCottageChatMessages(prev => [...prev, { sender: isStorytellerMode ? storyteller.name : 'Moi', text: cottageInputText.trim() }]);
+                        setCottageInputText('');
+                      }}
+                      className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold"
+                    >
+                      Envoyer
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex justify-between items-center pt-2 border-t border-stone-800">
+                  <span className="text-[10px] text-stone-500 italic">Vocal actif uniquement entre vous.</span>
+                  <button
+                    onClick={() => { setVisitingCottagePlayer(null); setCottageGuestPlayerId(null); }}
+                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl shadow"
+                  >
+                    Quitter le cottage
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* MODALE : FIN DE PARTIE & VICTOIRE */}
+          {victoryModal && (
+            <div className="fixed inset-0 bg-black/90 backdrop-blur-xl flex items-center justify-center p-4 z-50">
+              <div className="bg-stone-950 border-2 border-amber-500 rounded-3xl max-w-lg w-full p-6 shadow-2xl text-center space-y-4">
+                <div className="w-16 h-16 rounded-full mx-auto flex items-center justify-center text-3xl shadow-xl bg-purple-950 border-2 border-amber-400">
+                  {victoryModal === 'good' ? '🕊️' : '😈'}
+                </div>
+
+                <h3 className={`font-serif font-black text-2xl tracking-widest ${
+                  victoryModal === 'good' ? 'text-blue-400' : 'text-red-500'
+                }`}>
+                  {victoryModal === 'good' ? 'VICTOIRE DU BIEN !' : 'VICTOIRE DU MAL !'}
+                </h3>
+
+                <p className="text-xs text-stone-300">
+                  La partie est terminée. Vous pouvez tout révéler, mélanger les sièges ou réinitialiser.
+                </p>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2">
+                  <button
+                    onClick={() => {
+                      playSound('bell');
+                      const allRev = {};
+                      players.forEach((_, idx) => { allRev[idx] = true; });
+                      setRevealedSeats(allRev);
+                    }}
+                    className="px-2 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-stone-950 font-bold text-xs shadow"
+                  >
+                    Tout Révéler
+                  </button>
+
+                  <button
+                    onClick={shufflePlayerSeats}
+                    className="px-2 py-1.5 rounded-xl bg-indigo-900 hover:bg-indigo-800 text-indigo-100 font-bold text-xs shadow flex items-center justify-center gap-1"
+                  >
+                    <Icon name="Shuffle" className="w-3 h-3" /> Mélanger
+                  </button>
+
+                  <button
+                    onClick={() => setSwitchStorytellerModalOpen(true)}
+                    className="px-2 py-1.5 rounded-xl bg-purple-900 hover:bg-purple-800 text-purple-100 font-bold text-xs shadow flex items-center justify-center gap-1"
+                  >
+                    <Icon name="Crown" className="w-3 h-3 text-amber-300" /> Changer MJ
+                  </button>
+
+                  <button
+                    onClick={resetGameForRematch}
+                    className="px-2 py-1.5 rounded-xl bg-emerald-800 hover:bg-emerald-700 text-emerald-100 font-bold text-xs shadow flex items-center justify-center gap-1"
+                  >
+                    <Icon name="RotateCcw" className="w-3 h-3" /> Rejouer
+                  </button>
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    onClick={() => setVictoryModal(null)}
+                    className="px-4 py-1.5 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 font-semibold text-xs"
+                  >
+                    Fermer
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* MODALE : CHANGER DE CONTEUR */}
+          {switchStorytellerModalOpen && (
+            <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50">
+              <div className="bg-stone-950 border-2 border-amber-500 rounded-2xl max-w-sm w-full p-4 shadow-2xl space-y-3">
+                <div className="flex items-center justify-between border-b border-stone-800 pb-2">
+                  <h4 className="font-serif font-bold text-sm text-amber-200 flex items-center gap-1.5">
+                    <Icon name="Crown" className="w-4 h-4 text-amber-400" /> Transférer le rôle de Conteur
+                  </h4>
+                  <button onClick={() => setSwitchStorytellerModalOpen(false)} className="text-stone-400 hover:text-white">
+                    <Icon name="X" className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                  {players.map(p => (
+                    <button
+                      key={p.id}
+                      onClick={() => handlePromoteToStoryteller(p)}
+                      className="w-full p-2 rounded-xl bg-stone-900 border border-stone-800 hover:border-amber-400 flex items-center justify-between text-left transition"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg">{p.avatar}</span>
+                        <span className="text-xs font-bold text-stone-200">{p.name}</span>
+                      </div>
+                      <span className="text-[10px] font-bold text-amber-400">Promouvoir →</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* MODALE : WIKI OFFICIEL */}
           {wikiRoleModal && (
             <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50">
@@ -1952,15 +2342,52 @@
                   </button>
                 </div>
 
-                <button
-                  onClick={() => {
-                    setInLobbyScreen(true);
-                    setSettingsModalOpen(false);
-                  }}
-                  className="w-full py-2 bg-red-950 hover:bg-red-900 text-red-200 rounded-lg font-semibold flex items-center justify-center gap-1.5"
-                >
-                  <Icon name="LogOut" className="w-3.5 h-3.5" /> Quitter la salle
-                </button>
+                <div className="space-y-1.5">
+                  <label className="text-stone-300 font-semibold text-[11px]">
+                    Vitesse balayage vote : {nomination.speed} ms
+                  </label>
+                  <input
+                    type="range"
+                    min="800"
+                    max="3000"
+                    step="100"
+                    value={nomination.speed}
+                    onChange={(e) => setNomination(n => ({ ...n, speed: Number(e.target.value) }))}
+                    className="w-full accent-amber-500"
+                  />
+                </div>
+
+                {isStorytellerMode && (
+                  <div className="space-y-1.5 pt-2 border-t border-stone-800">
+                    <span className="text-stone-400 text-[10px] block">Déclarer la victoire :</span>
+                    <div className="flex gap-1.5">
+                      <button
+                        onClick={() => { setVictoryModal('good'); setSettingsModalOpen(false); playSound('bell'); }}
+                        className="flex-1 py-1 bg-blue-900/80 hover:bg-blue-800 border border-blue-500 text-blue-200 font-bold rounded-lg text-xs"
+                      >
+                        Bien
+                      </button>
+                      <button
+                        onClick={() => { setVictoryModal('evil'); setSettingsModalOpen(false); playSound('bell'); }}
+                        className="flex-1 py-1 bg-red-900/80 hover:bg-red-800 border border-red-500 text-red-200 font-bold rounded-lg text-xs"
+                      >
+                        Mal
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="pt-2 border-t border-stone-800">
+                  <button
+                    onClick={() => {
+                      setInLobbyScreen(true);
+                      setSettingsModalOpen(false);
+                    }}
+                    className="w-full py-1.5 bg-red-950 hover:bg-red-900 text-red-200 rounded-lg font-semibold flex items-center justify-center gap-1.5"
+                  >
+                    <Icon name="LogOut" className="w-3.5 h-3.5" /> Quitter la salle
+                  </button>
+                </div>
               </div>
             </div>
           )}
