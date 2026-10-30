@@ -8,14 +8,14 @@
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   
-  <!-- PeerJS pour la communication WebRTC P2P audio & vidéo en direct -->
+  <!-- PeerJS WebRTC P2P pour Audio & Vidéo -->
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 
   <!-- React 18 & ReactDOM -->
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   
-  <!-- Babel Standalone pour exécuter le JSX directement dans le navigateur -->
+  <!-- Babel Standalone pour exécuter le JSX dans le navigateur -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 </head>
 <body class="bg-[#100a14] text-stone-100 overflow-x-hidden font-sans select-none">
@@ -110,7 +110,6 @@
         Check: <polyline points="20 6 9 17 4 12"/>,
         X: <><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></>,
         Plus: <><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></>,
-        Minus: <line x1="5" y1="12" x2="19" y2="12"/>,
         Trash2: <><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></>,
         Video: <><polygon points="22 7 16 11 16 13 22 17 22 7"/><rect x="2" y="6" width="14" height="12" rx="2"/></>,
         VideoOff: <><line x1="2" y1="2" x2="22" y2="22"/><path d="M10.66 6H14a2 2 0 0 1 2 2v2.34l1 1L22 7v10l-4.5-3.37"/><path d="M2 8.34V16a2 2 0 0 0 2 2h7.66"/></>,
@@ -134,7 +133,8 @@
         DoorOpen: <><path d="M13 4h3a2 2 0 0 1 2 2v14"/><path d="M2 20h20"/><path d="M13 20V4a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v16"/><circle cx="9" cy="12" r="1"/></>,
         Info: <><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></>,
         Send: <><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></>,
-        Mail: <><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></>
+        Mail: <><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></>,
+        History: <><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><polyline points="3 3 3 8 8 8"/><polyline points="12 7 12 12 15 15"/></>
       };
 
       return (
@@ -155,7 +155,7 @@
     };
 
     // ==========================================
-    // ASSETS & DATA : JETONS OFFICIELS BOTC
+    // ASSETS & DONNÉES BOTC
     // ==========================================
     const BOTC_ICON_CDN = "https://raw.githubusercontent.com/bra1n/townsquare/develop/src/assets/icons/";
 
@@ -177,7 +177,7 @@
         roles: ['clockmaker', 'investigator', 'empath', 'chambermaid', 'artist', 'sage', 'drunk', 'klutz', 'scarletwoman', 'baron', 'imp']
       },
       luf: {
-        id: 'luf', name: 'Teensyville: Laissez un Faire', desc: 'Script Teensyville culte de Steven Medway articulé autour du Démon Léviathan.',
+        id: 'luf', name: 'Teensyville: Laissez un Faire', desc: 'Script Teensyville culte articulé autour du Démon Léviathan.',
         roles: ['balloonist', 'savant', 'amnesiac', 'fisherman', 'artist', 'cannibal', 'mutant', 'lunatic', 'widow', 'goblin', 'leviathan']
       }
     };
@@ -254,7 +254,7 @@
     const BOT_AVATARS = ['🐴', '🐺', '🦉', '🦊', '🦅', '🐗', '🦇', '🐈‍⬛', '🦌', '🗡️', '🛡️', '🕯️'];
 
     function App() {
-      // --- ÉCRAN 1 : LOBBY & AUTHENTIFICATION ---
+      // --- LOBBY & AUTHENTIFICATION ---
       const [inLobbyScreen, setInLobbyScreen] = useState(true);
       const [authMode, setAuthMode] = useState('create');
       const [userPseudo, setUserPseudo] = useState('');
@@ -328,6 +328,11 @@
       const [nightOrderTab, setNightOrderTab] = useState('first');
       const [settingsModalOpen, setSettingsModalOpen] = useState(false);
       const [switchStorytellerModalOpen, setSwitchStorytellerModalOpen] = useState(false);
+      const [secretRoleCardOpen, setSecretRoleCardOpen] = useState(false);
+
+      // --- 8. HISTORIQUE DES VOTES POUR LE MJ ---
+      const [voteHistoryModalOpen, setVoteHistoryModalOpen] = useState(false);
+      const [voteHistory, setVoteHistory] = useState([]); // [{ day, nominatorName, nomineeName, yesVoters: [], noVoters: [], timestamp }]
 
       // --- ACCUSATION ET VOTE ---
       const [accusationWizard, setAccusationWizard] = useState(null);
@@ -347,7 +352,7 @@
       const [victoryModal, setVictoryModal] = useState(null);
       const [revealedSeats, setRevealedSeats] = useState({});
 
-      // --- WEBRTC MULTIJOUEUR AUDIO & VIDÉO DISSOCIÉS ---
+      // --- WEBRTC MULTIJOUEUR AUDIO & VIDÉO RÉPARÉS ---
       const videoRef = useRef(null);
       const playerVideoRef = useRef(null);
       const [audioStream, setAudioStream] = useState(null);
@@ -393,16 +398,16 @@
         } catch (e) {}
       };
 
-      // 9. DISSOCIATION DU MICROPHONE : FONCTIONNE DE MANIÈRE AUTONOME SANS LA WEBCAM
+      // 2. MICROPHONE RÉPARÉ & AUTONOME
       const toggleMicrophone = async () => {
-        if (!audioStream) {
-          try {
+        try {
+          if (!audioStream) {
             const stream = await navigator.mediaDevices.getUserMedia({ 
-              audio: { echoCancellation: true, noiseSuppression: true } 
+              audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } 
             });
             setAudioStream(stream);
             setIsMicMuted(false);
-            
+
             if (peerRef.current && stream.getAudioTracks().length) {
               const audioTrack = stream.getAudioTracks()[0];
               Object.values(callsRef.current).forEach(call => {
@@ -417,17 +422,17 @@
                 }
               });
             }
-          } catch (e) {
-            console.warn("Accès microphone refusé :", e);
+          } else {
+            const nextMuted = !isMicMuted;
+            audioStream.getAudioTracks().forEach(t => { t.enabled = !nextMuted; });
+            setIsMicMuted(nextMuted);
           }
-        } else {
-          const nextMuted = !isMicMuted;
-          audioStream.getAudioTracks().forEach(t => { t.enabled = !nextMuted; });
-          setIsMicMuted(nextMuted);
+        } catch (e) {
+          console.warn("Accès microphone refusé :", e);
         }
       };
 
-      // 1. WEBCAM DU CONTEUR ET DES JOUEURS
+      // 1. WEBCAM RÉPARÉE (FIN DE L'ÉCRAN NOIR)
       const toggleUserWebcam = async () => {
         if (webcamStream) {
           webcamStream.getVideoTracks().forEach(t => t.stop());
@@ -441,7 +446,7 @@
         } else {
           try {
             const stream = await navigator.mediaDevices.getUserMedia({ 
-              video: { width: { ideal: 480 }, height: { ideal: 480 } }
+              video: { width: { ideal: 640 }, height: { ideal: 480 } }
             });
             setWebcamStream(stream);
 
@@ -474,7 +479,7 @@
         }
       };
 
-      // 10. TOUCHE ESPACE POUR VOTER OU DÉVOTER EN PHASE DE VOTE
+      // Touche Espace pour voter en direct
       useEffect(() => {
         const handleKeyDown = (e) => {
           if (e.code === 'Space' && nomination.active && !['INPUT', 'TEXTAREA'].includes(e.target.tagName)) {
@@ -499,7 +504,7 @@
         return () => window.removeEventListener('keydown', handleKeyDown);
       }, [nomination.active, currentUserId, isStorytellerMode, phase, gameStarted]);
 
-      // 5. ISOLATION ACOUSTIQUE STRICTE : LA NUIT AUCUN SON NE PASSE SAUF DANS LE COTTAGE
+      // Isolation sonore nocturne stricte et filtrage des salons
       useEffect(() => {
         Object.entries(remoteStreams).forEach(([pId, stream]) => {
           let shouldHear = false;
@@ -529,7 +534,7 @@
         });
       }, [phase, isStorytellerMode, visitingCottagePlayer, cottageGuestPlayerId, currentDayRoom, players, storyteller.currentRoom, remoteStreams, roomCode, currentUserId]);
 
-      // 12. MESSAGERIE DE NUIT PERSISTANTE DANS LES COTTAGES AVEC PASTILLE
+      // Messagerie secrète de nuit
       useEffect(() => {
         if (!roomCode) return;
         const targetCottageId = isStorytellerMode ? visitingCottagePlayer?.id : currentUserId;
@@ -554,7 +559,7 @@
         return () => clearInterval(msgInterval);
       }, [roomCode, visitingCottagePlayer, currentUserId, isStorytellerMode, cottageChatMessages.length, userPseudo, storyteller.name]);
 
-      // --- INITIALISATION WEBRTC PEERJS ---
+      // Initialisation WebRTC PeerJS
       useEffect(() => {
         if (!roomCode || inLobbyScreen || typeof Peer === 'undefined') return;
 
@@ -587,7 +592,20 @@
         }
       }, [roomCode, inLobbyScreen, isStorytellerMode, currentUserId, audioStream, webcamStream]);
 
-      // --- SYNCHRONISATION MULTIJOUEUR EN TEMPS RÉEL VIA FIREBASE ---
+      // 7. NETTOYAGE AUTOMATIQUE DES SALONS D'APARTÉ VIDES
+      useEffect(() => {
+        if (customPrivateRooms.length === 0) return;
+        setCustomPrivateRooms(prevRooms => {
+          return prevRooms.filter(room => {
+            const hasStoryteller = storyteller.currentRoom === room.id;
+            const hasPlayers = players.some(p => p.inRoom === room.id);
+            const isUserVisiting = currentDayRoom === room.id;
+            return hasStoryteller || hasPlayers || isUserVisiting;
+          });
+        });
+      }, [players, storyteller.currentRoom, currentDayRoom]);
+
+      // SYNCHRONISATION MULTIJOUEUR EN TEMPS RÉEL
       useEffect(() => {
         if (!roomCode || inLobbyScreen) return;
 
@@ -599,8 +617,21 @@
             if (data && !isCancelled) {
               if (data.players) {
                 const cleanPlayers = sanitizePlayerList(data.players);
-                setPlayers(cleanPlayers);
-                playersRef.current = cleanPlayers;
+                // Préserver les hypothèses locales du joueur connecté
+                if (!isStorytellerMode && currentUserId) {
+                  const merged = cleanPlayers.map(p => {
+                    const localExisting = playersRef.current.find(lp => lp.id === p.id);
+                    return {
+                      ...p,
+                      hypothesisRole: localExisting ? localExisting.hypothesisRole : p.hypothesisRole
+                    };
+                  });
+                  setPlayers(merged);
+                  playersRef.current = merged;
+                } else {
+                  setPlayers(cleanPlayers);
+                  playersRef.current = cleanPlayers;
+                }
               }
               if (data.phase) setPhase(data.phase);
               if (data.dayNumber !== undefined) setDayNumber(data.dayNumber);
@@ -610,6 +641,13 @@
               if (data.selectedScriptId) setSelectedScriptId(data.selectedScriptId);
               if (data.demonBluffs) setDemonBluffs(data.demonBluffs);
               if (data.onTheBlock !== undefined) setOnTheBlock(data.onTheBlock);
+              if (data.voteHistory) setVoteHistory(data.voteHistory);
+              if (data.rolesDistributedToPlayers !== undefined) {
+                setRolesDistributedToPlayers(data.rolesDistributedToPlayers);
+                if (data.rolesDistributedToPlayers && !isStorytellerMode) {
+                  setSecretRoleCardOpen(true);
+                }
+              }
               if (data.dayTimerSeconds !== undefined && !isStorytellerMode) setDayTimerSeconds(data.dayTimerSeconds);
               if (data.isTimerRunning !== undefined && !isStorytellerMode) setIsTimerRunning(data.isTimerRunning);
               if (data.pendingInvite && data.pendingInvite.toPlayerId === currentUserId) {
@@ -646,6 +684,8 @@
           selectedScriptId,
           demonBluffs,
           onTheBlock,
+          voteHistory,
+          rolesDistributedToPlayers,
           dayTimerSeconds,
           isTimerRunning,
           lastUpdated: Date.now(),
@@ -655,7 +695,7 @@
         firebaseSync.setRoom(roomCode, payload);
       };
 
-      // --- QUOTAS OFFICIELS & BARON ---
+      // Quotas officiels & Baron
       const currentScript = SCRIPTS_DATA[selectedScriptId] || SCRIPTS_DATA.tb;
       const officialQuota = PLAYER_DISTRIBUTION[players.length] || null;
 
@@ -757,7 +797,7 @@
         playSound('bell');
       };
 
-      // 8. LANCER LA PARTIE : DISTRIBUE AUTOMATIQUEMENT SI CE N'EST PAS FAIT
+      // 3. LANCER LA PARTIE DONNE LES RÔLES ET ACTIVE LA NUIT 1
       const handleStartGame = () => {
         if (players.length < 5) return;
         
@@ -875,6 +915,7 @@
         setVisitingCottagePlayer(null);
         setCottageGuestPlayerId(null);
         setDemonBluffs([null, null, null]);
+        setVoteHistory([]);
         setDayTimerSeconds(300);
         setIsTimerRunning(false);
 
@@ -890,11 +931,11 @@
 
         playersRef.current = updated;
         setPlayers(updated);
-        broadcastGameState(updated, 'day', false);
+        broadcastGameState(updated, 'day', false, { voteHistory: [], rolesDistributedToPlayers: false });
         playSound('bell');
       };
 
-      // 11. DOUBLE AIGUILLE SANS SAUT ANGULAIRE
+      // Double aiguille sans saut angulaire
       const nomineeIndex = useMemo(() => {
         if (!nomination.active || !nomination.nomineeId || players.length === 0) return -1;
         return players.findIndex(p => p.id === nomination.nomineeId);
@@ -922,6 +963,7 @@
         return startOffsetAngle + progressDeg;
       }, [nomination.active, nomination.clockIndex, nomineeIndex, orderedVoters.length, players.length]);
 
+      // Fin du tour d'horloge de vote avec sauvegarde dans l'historique
       useEffect(() => {
         if (!nomination.active || !nomination.isRunning || orderedVoters.length === 0) return;
 
@@ -935,6 +977,35 @@
               const aliveTotal = playersRef.current.filter(p => p.alive).length;
               const required = Math.ceil(aliveTotal / 2);
               const nominee = playersRef.current.find(p => p.id === prev.nomineeId);
+              const nominator = playersRef.current.find(p => p.id === prev.nominatorId);
+
+              // 8. ENREGISTREMENT DANS L'HISTORIQUE DE VOTE
+              const yesVoters = [];
+              const noVoters = [];
+              orderedVoters.forEach(v => {
+                if (prev.votes && prev.votes[v.id]) {
+                  yesVoters.push(v.name);
+                } else {
+                  noVoters.push(v.name);
+                }
+              });
+
+              const newVoteRecord = {
+                day: dayNumber,
+                nominatorName: nominator ? nominator.name : 'Inconnu',
+                nomineeName: nominee ? nominee.name : 'Inconnu',
+                yesVoters,
+                noVoters,
+                totalVotes,
+                required,
+                timestamp: Date.now()
+              };
+
+              setVoteHistory(vh => {
+                const updatedHistory = [newVoteRecord, ...vh];
+                broadcastGameState(playersRef.current, phase, gameStarted, { voteHistory: updatedHistory });
+                return updatedHistory;
+              });
 
               if (totalVotes >= required && nominee) {
                 if (!onTheBlock || totalVotes > onTheBlock.votes) {
@@ -962,7 +1033,7 @@
         }, nomination.speed);
 
         return () => clearTimeout(timer);
-      }, [nomination.active, nomination.isRunning, nomination.clockIndex, orderedVoters, onTheBlock]);
+      }, [nomination.active, nomination.isRunning, nomination.clockIndex, orderedVoters, onTheBlock, dayNumber]);
 
       const handleApproveAccusation = () => {
         if (!pendingAccusation) return;
@@ -999,7 +1070,6 @@
         broadcastGameState(updated, phase, gameStarted, { onTheBlock: null, nomination: { ...nomination, active: false, isRunning: false } });
       };
 
-      // 14. INVITATION EN APARTÉ PROTÉGÉE SANS AUTO-INVITATION
       const sendRoomInvite = (targetPlayer, explicitRoomId = null, explicitRoomName = null) => {
         if (!targetPlayer || targetPlayer.id === currentUserId) return;
         const customRoomId = explicitRoomId || `private_${Date.now()}`;
@@ -1079,6 +1149,10 @@
         });
         return rankMap;
       }, [players, dayNumber]);
+
+      // Rôle secret assigné à l'utilisateur actuel
+      const myPlayerObj = players.find(p => p.id === currentUserId);
+      const myRoleObj = myPlayerObj && myPlayerObj.role ? ROLES_DB[myPlayerObj.role] : null;
 
       // ==========================================
       // RENDU 1 : ÉCRAN DE CONNEXION / LOBBY
@@ -1166,7 +1240,7 @@
                         setInputRoomCode(e.target.value.toUpperCase());
                         setJoinError(null);
                       }}
-                      className="w-full px-3 py-2.5 rounded-xl bg-stone-900 border border-stone-700 focus:border-purple-500 focus:outline-none text-amber-300 uppercase font-mono tracking-widest font-bold placeholder:text-stone-600"
+                      className="w-full px-3 py-2.5 rounded-xl bg-stone-900 border border-stone-700 focus:border-purple-500 focus:outline-none text-amber-300 uppercase font-mono tracking-widest font-bold placeholder:text-stone-600 text-sm"
                     />
                   </div>
                 )}
@@ -1204,6 +1278,8 @@
                         dayNumber: 1,
                         gameStarted: false,
                         demonBluffs: [null, null, null],
+                        voteHistory: [],
+                        rolesDistributedToPlayers: false,
                         createdAt: Date.now()
                       };
 
@@ -1259,6 +1335,8 @@
                       setPhase(existingRoom.phase || 'day');
                       setDayNumber(existingRoom.dayNumber || 1);
                       setGameStarted(Boolean(existingRoom.gameStarted));
+                      setVoteHistory(existingRoom.voteHistory || []);
+                      setRolesDistributedToPlayers(Boolean(existingRoom.rolesDistributedToPlayers));
                       setIsStorytellerMode(false);
                       setInLobbyScreen(false);
                       setIsConnecting(false);
@@ -1293,7 +1371,7 @@
       }
 
       // ==========================================
-      // RENDU 2 : APPLICATION DE JEU PRINCIPALE
+      // RENDU 2 : APPLICATION PRINCIPALE
       // ==========================================
       return (
         <div className="min-h-screen w-full flex flex-col font-sans select-none bg-[#100a14] text-stone-100 overflow-hidden relative">
@@ -1325,6 +1403,33 @@
             </div>
           )}
 
+          {/* CARTE SECRÈTE DE RÉVÉLATION DU RÔLE (POUR LE JOUEUR) */}
+          {secretRoleCardOpen && myRoleObj && (
+            <div className="fixed inset-0 bg-black/90 backdrop-blur-xl flex items-center justify-center p-4 z-50 animate-fade-in">
+              <div className="bg-stone-950 border-2 border-amber-500 rounded-3xl max-w-sm w-full p-6 text-center space-y-4 shadow-2xl">
+                <span className="text-[10px] uppercase font-bold tracking-widest text-amber-400">
+                  Votre Rôle Secret
+                </span>
+                <div className="w-24 h-24 rounded-full border-4 border-amber-400/80 bg-stone-900 flex items-center justify-center mx-auto shadow-2xl">
+                  <img src={myRoleObj.cdnIcon} alt={myRoleObj.name} className="w-16 h-16 object-contain drop-shadow" />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-serif font-black text-amber-200">{myRoleObj.name}</h3>
+                  <span className="text-xs font-mono uppercase tracking-wider text-amber-400">{myRoleObj.team}</span>
+                </div>
+                <div className="p-3 rounded-xl bg-stone-900 border border-stone-800 text-xs text-stone-200 italic leading-relaxed">
+                  « {myRoleObj.ability} »
+                </div>
+                <button
+                  onClick={() => setSecretRoleCardOpen(false)}
+                  className="w-full py-2.5 bg-gradient-to-r from-amber-600 to-amber-500 text-stone-950 font-bold rounded-xl text-xs shadow-lg"
+                >
+                  J'ai compris mon rôle
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* BARRE SUPÉRIEURE DE NAVIGATION */}
           <header className="h-12 border-b border-purple-900/40 bg-black/85 backdrop-blur-md px-3 sm:px-4 flex items-center justify-between z-40">
             <div className="flex items-center gap-2 sm:gap-3">
@@ -1332,6 +1437,7 @@
                 <span className="font-serif font-black tracking-widest text-amber-200 text-xs sm:text-sm">
                   BOTC ONLINE
                 </span>
+                {/* 10. CODE DE PARTIE AGRANDI */}
                 <button
                   onClick={() => {
                     const temp = document.createElement('textarea');
@@ -1342,11 +1448,11 @@
                     document.body.removeChild(temp);
                     playSound('tick');
                   }}
-                  className="px-2 py-0.5 rounded bg-purple-950/80 border border-purple-600/40 text-[10px] font-mono text-amber-300 font-bold hover:bg-purple-900 transition flex items-center gap-1"
+                  className="px-2.5 py-1 rounded bg-purple-950/80 border border-purple-500/60 text-xs sm:text-sm font-mono text-amber-300 font-black hover:bg-purple-900 transition flex items-center gap-1.5 shadow"
                   title="Cliquer pour copier le code de la partie"
                 >
                   <span>{roomCode}</span>
-                  <span className="text-[9px] text-stone-400">📋</span>
+                  <span className="text-[10px] text-stone-400">📋</span>
                 </button>
               </div>
 
@@ -1379,12 +1485,23 @@
                 </span>
               )}
 
+              {/* LISTE DES RÔLES */}
               <button
                 onClick={() => setIsScriptDrawerOpen(true)}
                 className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-950/90 to-purple-950/90 hover:from-amber-900 hover:to-purple-900 border border-amber-500/60 text-xs text-amber-200 font-bold transition shadow"
               >
                 <Icon name="BookOpen" className="w-3.5 h-3.5 text-amber-400" />
-                <span className="font-serif">Liste des Rôles</span>
+                <span className="font-serif hidden xs:inline">Liste des Rôles</span>
+              </button>
+
+              {/* 12. ORDRE DE NUIT PLACÉ DIRECTEMENT À CÔTÉ DE LA LISTE DES RÔLES */}
+              <button
+                onClick={() => setNightOrderModalOpen(true)}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-950/90 hover:bg-indigo-900 border border-indigo-500/60 text-xs text-indigo-200 font-bold transition shadow"
+                title="Consulter l'ordre de réveil nocturne"
+              >
+                <Icon name="Clock" className="w-3.5 h-3.5 text-indigo-400" />
+                <span className="font-serif hidden sm:inline">Ordre de Nuit</span>
               </button>
             </div>
 
@@ -1397,7 +1514,6 @@
                     {Math.floor(dayTimerSeconds / 60)}:{(dayTimerSeconds % 60).toString().padStart(2, '0')}
                   </span>
 
-                  {/* 13. AJOUT ET RETRAIT DE MINUTES PAR LE MJ */}
                   {isStorytellerMode && (
                     <div className="flex items-center gap-1 ml-1.5 border-l border-stone-700 pl-1.5">
                       <button
@@ -1477,7 +1593,18 @@
 
             {/* COMMANDES CONTEUR / JOUEUR */}
             <div className="flex items-center gap-2">
-              {/* 12. BOUTON DE MESSAGERIE DU COTTAGE AVEC PASTILLE */}
+              {/* 8. BOUTON HISTORIQUE DES VOTES (RÉSERVÉ AU MJ) */}
+              {isStorytellerMode && (
+                <button
+                  onClick={() => setVoteHistoryModalOpen(true)}
+                  className="p-1.5 rounded-lg border border-amber-600/50 bg-stone-900 hover:bg-amber-950/60 text-amber-300 transition"
+                  title="Historique des votes par jour"
+                >
+                  <Icon name="History" className="w-3.5 h-3.5" />
+                </button>
+              )}
+
+              {/* MESSAGERIE SECRÈTE DU COTTAGE */}
               <button
                 onClick={() => {
                   setCottageDrawerOpen(true);
@@ -1495,7 +1622,7 @@
                 )}
               </button>
 
-              {/* 9. MICROPHONE DISSOCIÉ DE LA CAMÉRA */}
+              {/* 2. MICROPHONE RÉPARÉ */}
               <button
                 onClick={toggleMicrophone}
                 className={`p-1.5 rounded-lg border text-xs transition ${
@@ -1508,7 +1635,7 @@
                 <Icon name={!isMicMuted ? "Mic" : "MicOff"} className="w-3.5 h-3.5" />
               </button>
 
-              {/* CAMÉRA */}
+              {/* 1. CAMÉRA RÉPARÉE */}
               <button
                 onClick={toggleUserWebcam}
                 className={`p-1.5 rounded-lg border text-xs transition ${
@@ -1521,13 +1648,17 @@
                 <Icon name={(isStorytellerMode ? storyteller.cameraActive : playerCamActive) ? "Video" : "VideoOff"} className="w-3.5 h-3.5" />
               </button>
 
-              {/* 3. ORDRE DE NUIT ACCESSIBLE AUSSI AUX JOUEURS */}
+              {/* BASCULE DE VUE CONTEUR / JOUEUR */}
               <button
-                onClick={() => setNightOrderModalOpen(true)}
-                className="px-2 py-1 rounded-lg bg-stone-900 border border-stone-700 text-xs text-indigo-300 hover:text-indigo-200"
-                title="Consulter l'ordre de nuit"
+                onClick={() => setIsStorytellerMode(prev => !prev)}
+                className={`px-2 py-1 rounded-lg text-xs font-bold border transition flex items-center gap-1.5 ${
+                  isStorytellerMode
+                    ? 'bg-amber-950/80 border-amber-500 text-amber-200'
+                    : 'bg-stone-800 border-stone-600 text-stone-300'
+                }`}
               >
-                <Icon name="Clock" className="w-3.5 h-3.5" />
+                <Icon name="Crown" className="w-3.5 h-3.5 text-amber-400" />
+                <span className="hidden sm:inline">{isStorytellerMode ? 'MJ' : 'Joueur'}</span>
               </button>
 
               {isStorytellerMode && gameStarted && (
@@ -1590,7 +1721,7 @@
             </div>
           )}
 
-          {/* BANDEAU DES SALONS AVEC OCCUPANTS DIRECTEMENT AFFICHÉS */}
+          {/* BANDEAU DES SALONS */}
           <div className="min-h-12 bg-stone-950/95 border-b border-stone-800 px-3 sm:px-4 py-1.5 flex items-center justify-between text-xs z-30 overflow-x-auto gap-2">
             {phase === 'day' ? (
               <div className="flex items-center gap-2 flex-wrap">
@@ -1680,10 +1811,10 @@
             </button>
           </div>
 
-          {/* ZONE CENTRALE DU CERCLE AVEC OVERFLOW SÉCURISÉ */}
+          {/* ZONE CENTRALE DU CERCLE */}
           <div className="flex-1 flex overflow-y-auto overflow-x-hidden relative min-h-0">
             
-            {/* 1. WEBCAM DU CONTEUR (VISIBLE PAR TOUS) */}
+            {/* 1. WEBCAM DU CONTEUR (HAUT GAUCHE) */}
             <div className="absolute top-2 left-2 sm:top-4 sm:left-4 z-30 flex flex-col items-start gap-1">
               <div className="relative w-20 h-20 sm:w-24 sm:h-24 md:w-28 md:h-28 rounded-2xl overflow-hidden border-2 border-amber-500/80 bg-stone-950 shadow-2xl group">
                 {isStorytellerMode ? (
@@ -1725,7 +1856,7 @@
               </div>
             </div>
 
-            {/* BLUFFS DÉMON (CONTEUR SEULEMENT) */}
+            {/* 11. BLUFFS DÉMON AVEC POUVOIR AU SURVOL VERS LE HAUT */}
             {isStorytellerMode && (
               <div className="absolute bottom-2 left-2 sm:bottom-4 sm:left-4 z-30 flex flex-col gap-1">
                 <div className="flex items-center justify-between text-[10px] uppercase font-bold tracking-wider text-rose-400 gap-2">
@@ -1748,7 +1879,7 @@
                       <div
                         key={bIdx}
                         onClick={() => setDemonBluffPickerIndex(bIdx)}
-                        className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full border-2 border-dashed border-rose-600/80 bg-stone-900 flex items-center justify-center relative cursor-pointer hover:scale-105 transition shadow-lg ${
+                        className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full border-2 border-dashed border-rose-600/80 bg-stone-900 flex items-center justify-center relative cursor-pointer hover:scale-105 transition shadow-lg group/bluff ${
                           roleObj ? 'border-solid border-rose-500' : ''
                         }`}
                       >
@@ -1760,6 +1891,19 @@
                         <span className="absolute -bottom-1 -right-1 w-4 h-4 bg-rose-950 border border-rose-500 text-rose-200 rounded-full text-[9px] font-bold flex items-center justify-center">
                           {bIdx + 1}
                         </span>
+
+                        {/* 11. POUVOIR DU BLUFF AU SURVOL VERS LE HAUT */}
+                        {roleObj && (
+                          <div className="absolute bottom-full mb-2 left-0 hidden group-hover/bluff:block z-50 pointer-events-none w-56 p-2 rounded-xl bg-stone-950/98 border-2 border-rose-500 text-left shadow-2xl backdrop-blur-md">
+                            <div className="flex items-center gap-1.5 border-b border-stone-800 pb-1 mb-1">
+                              <span className="text-xs font-bold text-rose-300 font-serif">{roleObj.name}</span>
+                              <span className="text-[9px] font-mono text-stone-400 uppercase ml-auto">({roleObj.team})</span>
+                            </div>
+                            <p className="text-[10px] text-stone-200 leading-snug italic font-serif">
+                              « {roleObj.ability} »
+                            </p>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -1767,7 +1911,7 @@
               </div>
             )}
 
-            {/* 6. COMMANDES DE L'HÔTE (DÉPLACÉES PLUS AU CENTRE POUR NE PLUS CHEVAUCHER LES BLUFFS) */}
+            {/* COMMANDES DE L'HÔTE */}
             {isStorytellerMode && !gameStarted && (
               <div className="absolute bottom-4 left-56 sm:left-64 z-30 flex flex-wrap items-center gap-2 bg-stone-950/95 border border-stone-800 p-2 rounded-2xl backdrop-blur-md shadow-2xl">
                 <button
@@ -1786,7 +1930,7 @@
                   </button>
                 )}
 
-                {/* 8. BOUTON LANCER QUI DISTRIBUE DIRECTEMENT */}
+                {/* 3. LANCER LA PARTIE DONNE LES RÔLES ET ACTIVE LA NUIT 1 */}
                 {players.length >= 5 && (
                   <button
                     onClick={handleStartGame}
@@ -1795,6 +1939,18 @@
                     <Icon name="Play" className="w-3.5 h-3.5 fill-white" /> Lancer la Partie (Nuit 1)
                   </button>
                 )}
+              </div>
+            )}
+
+            {/* 5. BOUTON FORMULER UNE ACCUSATION (VISIBLE PAR TOUS PENDANT LE JOUR) */}
+            {phase === 'day' && !nomination.active && (
+              <div className="absolute bottom-4 right-4 z-30">
+                <button
+                  onClick={() => setAccusationWizard({ step: 1, nominatorId: null, nomineeId: null })}
+                  className="px-4 py-2.5 bg-gradient-to-r from-red-700 to-amber-700 hover:from-red-600 hover:to-amber-600 border-2 border-amber-400 rounded-2xl font-bold text-xs flex items-center gap-2 shadow-2xl text-white transition active:scale-95"
+                >
+                  <Icon name="Gavel" className="w-4 h-4" /> Formuler une Accusation
+                </button>
               </div>
             )}
 
@@ -1807,7 +1963,7 @@
                     <div className="text-7xl sm:text-9xl filter drop-shadow">😈</div>
                   </div>
 
-                  {/* 11. HORLOGE À DOUBLE AIGUILLE CONFORME BOTC APP (SANS SAUT ANGULAIRE) */}
+                  {/* DOUBLE AIGUILLE DE VOTE */}
                   {nomination.active && (
                     <>
                       {/* AIGUILLE ROUGE FIXÉE SUR L'ACCUSÉ */}
@@ -1824,7 +1980,7 @@
                         </div>
                       </div>
 
-                      {/* AIGUILLE DORÉE QUI BALAIE D'UN BLOC FLUIDE */}
+                      {/* AIGUILLE DORÉE DE BALAYAGE */}
                       {nomination.clockIndex >= 0 && (
                         <div
                           className="absolute w-2.5 h-[48%] origin-bottom bottom-1/2 rounded-full pointer-events-none z-20 transition-transform duration-500 ease-out"
@@ -1861,7 +2017,6 @@
                           )}
                         </div>
 
-                        {/* RAPPEL TOUCHE ESPACE */}
                         <div className="text-[9px] text-stone-400 font-mono mb-2">
                           [Espace] pour voter
                         </div>
@@ -2039,7 +2194,7 @@
                           </div>
                         </div>
 
-                        {/* JETON DE RÔLE & RAPPELS DÉPORTÉS */}
+                        {/* JETON DE RÔLE & RAPPELS */}
                         <div className="relative flex items-center justify-center">
                           <div
                             onClick={() => {
@@ -2081,9 +2236,9 @@
                               </div>
                             )}
 
-                            {/* 7. TOOLTIP DÉPORTÉ VERS LE BAS : NE SUPERPOSE PLUS L'AVATAR/WEBCAM */}
+                            {/* 6. INFOBULLE DU POUVOIR POSITIONNÉE À GAUCHE (NE RECOUVRE PLUS RIEN) */}
                             {isStorytellerMode && roleObj && (
-                              <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 hidden group-hover:block z-50 pointer-events-none w-52 sm:w-60 p-2 sm:p-2.5 rounded-xl bg-stone-950/98 border-2 border-amber-500 text-left shadow-2xl backdrop-blur-md">
+                              <div className="absolute right-full mr-3 top-1/2 -translate-y-1/2 hidden group-hover:block z-50 pointer-events-none w-56 sm:w-64 p-2.5 rounded-xl bg-stone-950/98 border-2 border-amber-500 text-left shadow-2xl backdrop-blur-md">
                                 <div className="flex items-center gap-1.5 border-b border-stone-800 pb-1 mb-1">
                                   <span className="text-xs font-bold text-amber-300 font-serif">{roleObj.name}</span>
                                   <span className="text-[9px] font-mono text-stone-400 uppercase ml-auto">({roleObj.team})</span>
@@ -2194,7 +2349,7 @@
               )}
             </main>
 
-            {/* 2. PARCHEMIN LATÉRAL DU SCRIPT AVEC POUVOIR AU SURVOL */}
+            {/* PARCHEMIN LATÉRAL DU SCRIPT */}
             <aside className={`w-80 border-l border-amber-900/40 bg-[#140b15] p-4 flex flex-col justify-between transition-all duration-300 z-30 ${
               isScriptDrawerOpen ? 'mr-0' : '-mr-80'
             }`}>
@@ -2248,7 +2403,77 @@
             </aside>
           </div>
 
-          {/* 4. MODALE DE VISITE DU COTTAGE PAR LE MJ SANS LARSEN */}
+          {/* 8. MODALE HISTORIQUE DES VOTES (MJ SEULEMENT) */}
+          {voteHistoryModalOpen && isStorytellerMode && (
+            <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in">
+              <div className="bg-stone-950 border-2 border-amber-600 rounded-3xl max-w-xl w-full p-5 shadow-2xl flex flex-col max-h-[85vh] space-y-3">
+                <div className="flex items-center justify-between border-b border-stone-800 pb-2">
+                  <div className="flex items-center gap-2">
+                    <Icon name="History" className="w-4 h-4 text-amber-400" />
+                    <h4 className="font-serif font-bold text-base text-amber-200">Historique des Votes par Jour</h4>
+                  </div>
+                  <button onClick={() => setVoteHistoryModalOpen(false)} className="text-stone-400 hover:text-white">
+                    <Icon name="X" className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto space-y-3 pr-1 text-xs">
+                  {voteHistory.length === 0 ? (
+                    <div className="text-center text-stone-500 italic py-8">
+                      Aucun vote d'accusation n'a encore eu lieu dans cette partie.
+                    </div>
+                  ) : (
+                    voteHistory.map((rec, idx) => (
+                      <div key={idx} className="p-3 rounded-2xl bg-stone-900 border border-stone-800 space-y-2">
+                        <div className="flex items-center justify-between border-b border-stone-800 pb-1.5">
+                          <span className="font-serif font-bold text-amber-300">
+                            Jour {rec.day} : {rec.nominatorName} accuse {rec.nomineeName}
+                          </span>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            rec.totalVotes >= rec.required
+                              ? 'bg-red-950 border border-red-500 text-red-200'
+                              : 'bg-stone-800 text-stone-400'
+                          }`}>
+                            {rec.totalVotes} / {rec.required} requis
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 text-[11px]">
+                          <div className="p-2 rounded-xl bg-emerald-950/40 border border-emerald-900/60">
+                            <span className="font-bold text-emerald-400 block mb-1">Ont voté OUI ({rec.yesVoters.length}) :</span>
+                            <div className="flex flex-wrap gap-1">
+                              {rec.yesVoters.length > 0 ? (
+                                rec.yesVoters.map((name, i) => (
+                                  <span key={i} className="px-1.5 py-0.5 rounded bg-emerald-900/80 text-emerald-200 text-[10px]">
+                                    {name}
+                                  </span>
+                                ))
+                              ) : (
+                                <span className="text-stone-500 italic text-[10px]">Personne</span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="p-2 rounded-xl bg-stone-950/60 border border-stone-800">
+                            <span className="font-bold text-stone-400 block mb-1">Ont voté NON ({rec.noVoters.length}) :</span>
+                            <div className="flex flex-wrap gap-1">
+                              {rec.noVoters.map((name, i) => (
+                                <span key={i} className="px-1.5 py-0.5 rounded bg-stone-800 text-stone-300 text-[10px]">
+                                  {name}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* MODALE DE VISITE DU COTTAGE PAR LE MJ */}
           {visitingCottagePlayer && isStorytellerMode && (
             <div className="fixed inset-0 bg-black/95 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in">
               <div className="bg-stone-950 border-2 border-indigo-500 rounded-3xl max-w-lg w-full p-5 sm:p-6 shadow-2xl space-y-4 max-h-[92vh] flex flex-col">
@@ -2356,7 +2581,7 @@
             </div>
           )}
 
-          {/* 12. TIROIR DE MESSAGERIE SECRÈTE POUR LE JOUEUR */}
+          {/* TIROIR DE MESSAGERIE SECRÈTE POUR LE JOUEUR */}
           {cottageDrawerOpen && (
             <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in">
               <div className="bg-stone-950 border-2 border-indigo-600 rounded-3xl max-w-md w-full p-5 shadow-2xl flex flex-col max-h-[80vh] space-y-3">
@@ -2421,45 +2646,50 @@
             </div>
           )}
 
-          {/* 3. MODALE D'ORDRE DE NUIT */}
+          {/* 9. MODALE ORDRE DE NUIT ÉLARGIE (SANS BARRE DE DÉFILEMENT HORIZONTALE NI TEXTE COUPÉ) */}
           {nightOrderModalOpen && (
             <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in">
-              <div className="bg-stone-950 border-2 border-indigo-600 rounded-3xl max-w-md w-full p-5 shadow-2xl space-y-3 max-h-[85vh] flex flex-col">
-                <div className="flex items-center justify-between border-b border-stone-800 pb-2">
+              <div className="bg-stone-950 border-2 border-indigo-600 rounded-3xl max-w-2xl w-full p-5 sm:p-6 shadow-2xl space-y-4 max-h-[85vh] flex flex-col">
+                <div className="flex items-center justify-between border-b border-stone-800 pb-3">
                   <div className="flex items-center gap-2">
-                    <Icon name="Clock" className="w-4 h-4 text-indigo-400" />
-                    <h4 className="font-serif font-bold text-base text-indigo-200">Ordre Officiel de Réveil Nocturne</h4>
+                    <Icon name="Clock" className="w-5 h-5 text-indigo-400" />
+                    <h4 className="font-serif font-bold text-lg text-indigo-200">Ordre Officiel de Réveil Nocturne</h4>
                   </div>
                   <button onClick={() => setNightOrderModalOpen(false)} className="text-stone-400 hover:text-white">
-                    <Icon name="X" className="w-4 h-4" />
+                    <Icon name="X" className="w-5 h-5" />
                   </button>
                 </div>
 
                 <div className="flex rounded-xl bg-stone-900 p-1 border border-stone-800 text-xs">
                   <button
                     onClick={() => setNightOrderTab('first')}
-                    className={`flex-1 py-1.5 rounded-lg font-bold transition ${nightOrderTab === 'first' ? 'bg-indigo-600 text-white shadow' : 'text-stone-400'}`}
+                    className={`flex-1 py-2 rounded-lg font-bold transition ${nightOrderTab === 'first' ? 'bg-indigo-600 text-white shadow' : 'text-stone-400'}`}
                   >
                     Première Nuit
                   </button>
                   <button
                     onClick={() => setNightOrderTab('other')}
-                    className={`flex-1 py-1.5 rounded-lg font-bold transition ${nightOrderTab === 'other' ? 'bg-indigo-600 text-white shadow' : 'text-stone-400'}`}
+                    className={`flex-1 py-2 rounded-lg font-bold transition ${nightOrderTab === 'other' ? 'bg-indigo-600 text-white shadow' : 'text-stone-400'}`}
                   >
                     Autres Nuits
                   </button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto space-y-1.5 pr-1 text-xs">
+                <div className="flex-1 overflow-y-auto overflow-x-hidden space-y-2 pr-1 text-xs">
                   {visibleNightRoles.map((role, idx) => (
-                    <div key={role.id} className="p-2 rounded-xl bg-stone-900 border border-stone-800 flex items-center gap-2">
-                      <span className="w-5 h-5 rounded-full bg-indigo-950 text-indigo-300 font-mono text-[10px] font-bold flex items-center justify-center border border-indigo-800">
+                    <div key={role.id} className="p-3 rounded-2xl bg-stone-900 border border-stone-800 flex items-start gap-3">
+                      <span className="w-6 h-6 rounded-full bg-indigo-950 text-indigo-300 font-mono text-xs font-black flex items-center justify-center border border-indigo-700 shrink-0 mt-0.5">
                         {idx + 1}
                       </span>
-                      <img src={role.cdnIcon} alt={role.name} className="w-6 h-6 object-contain" onError={(e) => { e.target.style.display = 'none'; }} />
-                      <div className="flex-1">
-                        <span className="font-bold text-stone-200">{role.name}</span>
-                        <p className="text-[10px] text-stone-400 truncate">{role.ability}</p>
+                      <img src={role.cdnIcon} alt={role.name} className="w-8 h-8 object-contain shrink-0" onError={(e) => { e.target.style.display = 'none'; }} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-0.5">
+                          <span className="font-serif font-bold text-sm text-amber-200">{role.name}</span>
+                          <span className="text-[10px] font-mono uppercase text-stone-400">({role.team})</span>
+                        </div>
+                        <p className="text-xs text-stone-300 leading-relaxed italic">
+                          {role.ability}
+                        </p>
                       </div>
                     </div>
                   ))}
@@ -2532,7 +2762,7 @@
             </div>
           )}
 
-          {/* MODALE : SÉLECTEUR DE RÔLE AVEC QUOTAS OFFICIELS */}
+          {/* 4. MODALE DE SÉLECTION DE RÔLE (GRIMOIRE OU HYPOTHÈSE DU JOUEUR PERSISTANTE) */}
           {rolePickerModal && (
             <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in">
               <div className="bg-stone-950 border-2 border-amber-600 rounded-3xl max-w-2xl w-full p-5 shadow-2xl space-y-4 max-h-[85vh] flex flex-col">
@@ -2545,7 +2775,7 @@
                     </h3>
                     <p className="text-xs text-stone-400">
                       {rolePickerModal.isPlayerHypothesis
-                        ? "Visible uniquement sur votre carnet de notes personnel."
+                        ? "Visible uniquement sur votre carnet personnel (ne disparaîtra pas)."
                         : "Rôle secret officiel du Grimoire du Conteur."}
                     </p>
                   </div>
@@ -2638,7 +2868,9 @@
                   <button
                     onClick={() => {
                       if (rolePickerModal.isPlayerHypothesis) {
-                        setPlayers(prev => prev.map((p, idx) => idx === rolePickerModal.seatIndex ? { ...p, hypothesisRole: null } : p));
+                        const updated = playersRef.current.map((p, idx) => idx === rolePickerModal.seatIndex ? { ...p, hypothesisRole: null } : p);
+                        playersRef.current = updated;
+                        setPlayers(updated);
                       } else {
                         const updated = playersRef.current.map((p, idx) => idx === rolePickerModal.seatIndex ? { ...p, role: null } : p);
                         playersRef.current = updated;
@@ -2671,43 +2903,45 @@
                               : null;
 
                             return (
-                              <div key={r.id} className="relative group/rolebtn">
-                                <button
-                                  onClick={() => {
-                                    if (rolePickerModal.isPlayerHypothesis) {
-                                      setPlayers(prev => prev.map((p, idx) => idx === rolePickerModal.seatIndex ? { ...p, hypothesisRole: r.id } : p));
-                                    } else {
-                                      const updated = playersRef.current.map((p, idx) => idx === rolePickerModal.seatIndex ? { ...p, role: r.id } : p);
-                                      playersRef.current = updated;
-                                      setPlayers(updated);
-                                      broadcastGameState(updated);
-                                    }
-                                    setRolePickerModal(null);
-                                    playSound('bell');
-                                  }}
-                                  className={`w-full p-2 rounded-xl border flex items-center gap-2 text-left transition relative ${
-                                    assignedPlayer
-                                      ? 'bg-amber-950/40 border-amber-500/70 hover:bg-amber-950/70'
-                                      : 'bg-stone-900/90 border-stone-800 hover:border-amber-400 hover:bg-stone-800'
-                                  }`}
-                                >
-                                  <img src={r.cdnIcon} alt={r.name} className="w-7 h-7 object-contain" onError={(e) => { e.target.style.display = 'none'; }} />
-                                  <div className="truncate flex-1">
-                                    <div className="font-bold text-stone-200">{r.name}</div>
-                                    {assignedPlayer && (
-                                      <div className="text-[9px] text-amber-400 truncate">
-                                        Détenu par {assignedPlayer.name}
-                                      </div>
-                                    )}
-                                  </div>
-
+                              <button
+                                key={r.id}
+                                onClick={() => {
+                                  if (rolePickerModal.isPlayerHypothesis) {
+                                    // 4. JETON D'HYPOTHÈSE PERSISTANT POUR LE JOUEUR
+                                    const updated = playersRef.current.map((p, idx) => idx === rolePickerModal.seatIndex ? { ...p, hypothesisRole: r.id } : p);
+                                    playersRef.current = updated;
+                                    setPlayers(updated);
+                                  } else {
+                                    const updated = playersRef.current.map((p, idx) => idx === rolePickerModal.seatIndex ? { ...p, role: r.id } : p);
+                                    playersRef.current = updated;
+                                    setPlayers(updated);
+                                    broadcastGameState(updated);
+                                  }
+                                  setRolePickerModal(null);
+                                  playSound('bell');
+                                }}
+                                className={`w-full p-2 rounded-xl border flex items-center gap-2 text-left transition relative ${
+                                  assignedPlayer
+                                    ? 'bg-amber-950/40 border-amber-500/70 hover:bg-amber-950/70'
+                                    : 'bg-stone-900/90 border-stone-800 hover:border-amber-400 hover:bg-stone-800'
+                                }`}
+                              >
+                                <img src={r.cdnIcon} alt={r.name} className="w-7 h-7 object-contain" onError={(e) => { e.target.style.display = 'none'; }} />
+                                <div className="truncate flex-1">
+                                  <div className="font-bold text-stone-200">{r.name}</div>
                                   {assignedPlayer && (
-                                    <span className="px-1.5 py-0.5 rounded bg-amber-500 text-stone-950 text-[9px] font-black uppercase tracking-wider shrink-0 shadow">
-                                      Pris
-                                    </span>
+                                    <div className="text-[9px] text-amber-400 truncate">
+                                      Détenu par {assignedPlayer.name}
+                                    </div>
                                   )}
-                                </button>
-                              </div>
+                                </div>
+
+                                {assignedPlayer && (
+                                  <span className="px-1.5 py-0.5 rounded bg-amber-500 text-stone-950 text-[9px] font-black uppercase tracking-wider shrink-0 shadow">
+                                    Pris
+                                  </span>
+                                )}
+                              </button>
                             );
                           })}
                         </div>
