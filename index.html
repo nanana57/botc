@@ -14,6 +14,8 @@
   
   <!-- Babel Standalone pour compiler JSX dans le navigateur -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- PeerJS pour les flux audio/vidéo P2P WebRTC réels -->
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 </head>
 <body class="bg-[#100a14] text-stone-100 overflow-hidden font-sans select-none m-0 p-0 h-screen w-screen">
   <div id="root" class="h-full w-full"></div>
@@ -361,6 +363,8 @@
       const [cottageGuestPlayerId, setCottageGuestPlayerId] = useState(null);
       const [cottageChatMessages, setCottageChatMessages] = useState([]);
       const [cottageInputText, setCottageInputText] = useState('');
+      const [cottageMailboxOpen, setCottageMailboxOpen] = useState(false);
+      const [hasUnreadMessages, setHasUnreadMessages] = useState(false);
 
       // 7. NETTOYAGE AUTOMATIQUE DES SALONS D'APARTÉ VIDES
       useEffect(() => {
@@ -404,6 +408,47 @@
       const [audioStream, setAudioStream] = useState(null);
       const [isMicMuted, setIsMicMuted] = useState(false);
       const [playerCamActive, setPlayerCamActive] = useState(false);
+      const [remoteStreams, setRemoteStreams] = useState({}); // { [peerId]: MediaStream }
+      const peerInstance = useRef(null);
+
+      // Initialisation WebRTC P2P (PeerJS)
+      useEffect(() => {
+        if (!roomCode || inLobbyScreen) return;
+        const myPeerId = isStorytellerMode ? `botc_${roomCode}_host` : `botc_${roomCode}_p_${String(currentUserId || 'guest').replace(/[^a-zA-Z0-9]/g, '')}`;
+
+        let peer = null;
+        try {
+          peer = new window.Peer(myPeerId, { debug: 0 });
+          peerInstance.current = peer;
+
+          peer.on('call', (call) => {
+            const currentLocal = webcamStream || audioStream;
+            call.answer(currentLocal || undefined);
+            call.on('stream', (remoteStream) => {
+              setRemoteStreams(prev => ({ ...prev, [call.peer]: remoteStream }));
+            });
+          });
+        } catch (e) {
+          console.warn("PeerJS init:", e);
+        }
+
+        return () => {
+          if (peer) peer.destroy();
+        };
+      }, [roomCode, inLobbyScreen, currentUserId, isStorytellerMode]);
+
+      // Connecter aux autres dès qu'un flux local s'active
+      const connectToPeer = (targetPeerId) => {
+        if (!peerInstance.current) return;
+        const local = webcamStream || audioStream;
+        if (!local) return;
+        const call = peerInstance.current.call(targetPeerId, local);
+        if (call) {
+          call.on('stream', (remoteStream) => {
+            setRemoteStreams(prev => ({ ...prev, [targetPeerId]: remoteStream }));
+          });
+        }
+      };
 
       const toggleMicrophone = async () => {
         try {
@@ -413,6 +458,9 @@
             });
             setAudioStream(stream);
             setIsMicMuted(false);
+            if (!isStorytellerMode) {
+              connectToPeer(`botc_${roomCode}_host`);
+            }
           } else {
             const nextState = !isMicMuted;
             audioStream.getAudioTracks().forEach(t => { t.enabled = !nextState; });
@@ -425,9 +473,7 @@
 
       const toggleUserWebcam = async () => {
         if (webcamStream) {
-          webcamStream.getVideoTracks().forEach(t => {
-            t.stop();
-          });
+          webcamStream.getVideoTracks().forEach(t => t.stop());
           setWebcamStream(null);
           if (isStorytellerMode) {
             setStoryteller(s => ({ ...s, cameraActive: false }));
@@ -438,7 +484,7 @@
           try {
             const stream = await navigator.mediaDevices.getUserMedia({ 
               video: { width: { ideal: 320 }, height: { ideal: 240 } },
-              audio: false
+              audio: true
             });
             setWebcamStream(stream);
             if (isStorytellerMode) {
@@ -453,6 +499,7 @@
                 playerVideoRef.current.srcObject = stream;
                 playerVideoRef.current.play().catch(() => {});
               }
+              connectToPeer(`botc_${roomCode}_host`);
             }
           } catch (err) {
             console.warn("Erreur webcam:", err);
@@ -470,6 +517,23 @@
           playerVideoRef.current.play().catch(() => {});
         }
       }, [webcamStream, isStorytellerMode, playerCamActive]);
+
+      // Lecture des flux audios distants
+      useEffect(() => {
+        Object.entries(remoteStreams).forEach(([pId, stream]) => {
+          let audioEl = document.getElementById(`audio_peer_${pId}`);
+          if (!audioEl) {
+            audioEl = document.createElement('audio');
+            audioEl.id = `audio_peer_${pId}`;
+            audioEl.autoplay = true;
+            document.body.appendChild(audioEl);
+          }
+          if (audioEl.srcObject !== stream) {
+            audioEl.srcObject = stream;
+            audioEl.play().catch(() => {});
+          }
+        });
+      }, [remoteStreams]);
 
       // --- AUDIO SYNTHÉTISEUR ---
       const playSound = (type = 'bell') => {
@@ -540,6 +604,21 @@
               if (data.demonBluffs) setDemonBluffs(data.demonBluffs);
               if (data.onTheBlock !== undefined) setOnTheBlock(data.onTheBlock);
               if (data.voteHistory) setVoteHistory(data.voteHistory);
+              if (data.cottageChatMessages) {
+                setCottageChatMessages(data.cottageChatMessages);
+                if (data.cottageChatMessages.length > cottageChatMessages.length) {
+                  setHasUnreadMessages(true);
+                }
+              }
+              // 3. OUVERTURE AUTOMATIQUE DU COTTAGE CHEZ LE JOUEUR
+              if (data.nightActiveCottageTargetId) {
+                if (currentUserId && (data.nightActiveCottageTargetId === currentUserId || data.nightActiveCottageGuestId === currentUserId)) {
+                  const targetP = sanitized.find(p => p.id === data.nightActiveCottageTargetId);
+                  if (targetP) setVisitingCottagePlayer(targetP);
+                }
+              } else if (!isStorytellerMode) {
+                setVisitingCottagePlayer(null);
+              }
               if (data.dayTimerSeconds !== undefined && !isStorytellerMode) setDayTimerSeconds(data.dayTimerSeconds);
               if (data.isTimerRunning !== undefined && !isStorytellerMode) setIsTimerRunning(data.isTimerRunning);
             }
@@ -553,7 +632,7 @@
           isCancelled = true;
           clearInterval(interval);
         };
-      }, [roomCode, inLobbyScreen, isStorytellerMode]);
+      }, [roomCode, inLobbyScreen, isStorytellerMode, currentUserId, cottageChatMessages.length]);
 
       const broadcastGameState = (
         newPlayers = playersRef.current, 
@@ -574,6 +653,10 @@
           selectedScriptId,
           demonBluffs,
           onTheBlock,
+          voteHistory,
+          cottageChatMessages,
+          nightActiveCottageTargetId: visitingCottagePlayer ? visitingCottagePlayer.id : null,
+          nightActiveCottageGuestId: cottageGuestPlayerId || null,
           dayTimerSeconds,
           isTimerRunning,
           lastUpdated: Date.now(),
@@ -734,6 +817,8 @@
         return players.findIndex(p => p.id === nomination.nomineeId);
       }, [nomination.active, nomination.nomineeId, players]);
 
+      // L'ordre des votants fait STRICTEMENT le tour dans le sens des aiguilles :
+      // commence par le joueur juste après l'accusé, et se termine par l'accusé lui-même.
       const orderedVoters = useMemo(() => {
         if (nomineeIndex === -1 || players.length === 0) return [];
         const ordered = [];
@@ -759,63 +844,71 @@
 
       const currentVoter = nomination.clockIndex >= 0 ? orderedVoters[nomination.clockIndex] : null;
 
+      // REFONTE COMPLETE DU TIMER D'ACCUSATION : progression fluide de chaque vote
       useEffect(() => {
         if (!nomination.active || !nomination.isRunning || orderedVoters.length === 0) return;
 
         const timer = setTimeout(() => {
           playSound('tick');
-          setNomination(prev => {
-            const nextIdx = prev.clockIndex + 1;
-            if (nextIdx >= orderedVoters.length) {
-              playSound('gavel');
-              const totalVotes = Object.values(prev.votes || {}).filter(Boolean).length;
-              const aliveTotal = playersRef.current.filter(p => p.alive).length;
-              const required = Math.ceil(aliveTotal / 2);
-              const nominee = playersRef.current.find(p => p.id === prev.nomineeId);
+          const nextIdx = nomination.clockIndex + 1;
 
-              if (totalVotes >= required && nominee) {
-                if (!onTheBlock || totalVotes > onTheBlock.votes) {
-                  setOnTheBlock({ playerId: nominee.id, playerName: nominee.name, votes: totalVotes });
-                } else if (onTheBlock && totalVotes === onTheBlock.votes) {
-                  setOnTheBlock(null);
-                }
+          if (nextIdx >= orderedVoters.length) {
+            playSound('gavel');
+            const totalVotes = Object.values(nomination.votes || {}).filter(Boolean).length;
+            const aliveTotal = playersRef.current.filter(p => p.alive).length;
+            const required = Math.ceil(aliveTotal / 2);
+            const nominee = playersRef.current.find(p => p.id === nomination.nomineeId);
+
+            if (totalVotes >= required && nominee) {
+              if (!onTheBlock || totalVotes > onTheBlock.votes) {
+                setOnTheBlock({ playerId: nominee.id, playerName: nominee.name, votes: totalVotes });
+              } else if (onTheBlock && totalVotes === onTheBlock.votes) {
+                setOnTheBlock(null);
               }
-
-              // Consommation du vote fantôme
-              setPlayers(curr => curr.map(p => {
-                if (!p.alive && prev.votes && prev.votes[p.id]) {
-                  return { ...p, ghostVote: false };
-                }
-                return p;
-              }));
-
-              // 8. ENREGISTREMENT DANS L'HISTORIQUE DES VOTES POUR LE MJ
-              if (nominee) {
-                const nominator = playersRef.current.find(p => p.id === prev.nominatorId);
-                const votersList = playersRef.current.map(p => ({
-                  id: p.id,
-                  name: p.name,
-                  voted: Boolean(prev.votes && prev.votes[p.id])
-                }));
-                const newRecord = {
-                  day: dayNumber,
-                  nominatorName: nominator ? nominator.name : 'Inconnu',
-                  nomineeName: nominee.name,
-                  votesCount: totalVotes,
-                  majorityRequired: required,
-                  voters: votersList
-                };
-                setVoteHistory(vh => [...vh, newRecord]);
-                broadcastGameState(playersRef.current, phase, gameStarted, {
-                  voteHistory: [...voteHistory, newRecord]
-                });
-              }
-
-              return { ...prev, isRunning: false, clockIndex: -1 };
             }
-            return { ...prev, clockIndex: nextIdx };
-          });
-        }, nomination.speed || 1600);
+
+            // Consommation du vote fantôme
+            const updatedAfterGhosts = playersRef.current.map(p => {
+              if (!p.alive && nomination.votes && nomination.votes[p.id]) {
+                return { ...p, ghostVote: false };
+              }
+              return p;
+            });
+            setPlayers(updatedAfterGhosts);
+
+            if (nominee) {
+              const nominator = playersRef.current.find(p => p.id === nomination.nominatorId);
+              const votersList = playersRef.current.map(p => ({
+                id: p.id,
+                name: p.name,
+                voted: Boolean(nomination.votes && nomination.votes[p.id])
+              }));
+              const newRecord = {
+                day: dayNumber,
+                nominatorName: nominator ? nominator.name : 'Inconnu',
+                nomineeName: nominee.name,
+                votesCount: totalVotes,
+                majorityRequired: required,
+                voters: votersList
+              };
+              setVoteHistory(vh => [...vh, newRecord]);
+              broadcastGameState(updatedAfterGhosts, phase, gameStarted, {
+                voteHistory: [...voteHistory, newRecord],
+                nomination: { ...nomination, isRunning: false, clockIndex: -1 }
+              });
+            } else {
+              broadcastGameState(updatedAfterGhosts, phase, gameStarted, {
+                nomination: { ...nomination, isRunning: false, clockIndex: -1 }
+              });
+            }
+
+            setNomination(prev => ({ ...prev, isRunning: false, clockIndex: -1 }));
+          } else {
+            const updatedNom = { ...nomination, clockIndex: nextIdx };
+            setNomination(updatedNom);
+            broadcastGameState(playersRef.current, phase, gameStarted, { nomination: updatedNom });
+          }
+        }, nomination.speed || 1800);
 
         return () => clearTimeout(timer);
       }, [nomination.active, nomination.isRunning, nomination.clockIndex, orderedVoters, onTheBlock, dayNumber, voteHistory, phase, gameStarted]);
@@ -830,7 +923,7 @@
           clockIndex: -1,
           isRunning: false,
           votes: {},
-          speed: 1600
+          speed: 1800
         };
         setNomination(newNom);
         setPendingAccusation(null);
@@ -1299,6 +1392,24 @@
 
             {/* 2. COMMANDES MICRO, WEBCAM & PARAMÈTRES */}
             <div className="flex items-center gap-1.5">
+              {/* 3. BULLE DE MESSAGERIE SECRÈTE AVEC HISTORIQUE ET NOTIFICATION */}
+              <button
+                onClick={() => {
+                  setCottageMailboxOpen(true);
+                  setHasUnreadMessages(false);
+                }}
+                className="relative p-1 rounded-lg bg-stone-900 border border-stone-700 text-stone-300 hover:text-amber-300 transition"
+                title="Messages secrets reçus du Conteur"
+              >
+                <span>✉️</span>
+                {hasUnreadMessages && (
+                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full animate-ping" />
+                )}
+                {hasUnreadMessages && (
+                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full" />
+                )}
+              </button>
+
               {/* 8. BOUTON HISTORIQUE DES VOTES DU MJ */}
               {isStorytellerMode && (
                 <button
@@ -1360,11 +1471,11 @@
             </div>
           </header>
 
-          {/* BANDEAU DES SALONS COMPACT */}
-          <div className="h-8 bg-stone-950/95 border-b border-stone-800 px-3 flex items-center justify-between text-xs z-30 shrink-0 overflow-x-auto gap-2">
-            <div className="flex items-center gap-1.5 flex-nowrap">
+          {/* 4. BANDEAU DES SALONS AVEC NOMS COMPLETS DES JOUEURS AFFICHÉS DEDANS */}
+          <div className="min-h-9 bg-stone-950/95 border-b border-stone-800 px-3 py-1 flex items-center justify-between text-xs z-30 shrink-0 overflow-x-auto gap-2">
+            <div className="flex items-center gap-2 flex-nowrap">
               <span className="text-stone-400 font-bold uppercase text-[9px] tracking-wider shrink-0 flex items-center gap-1">
-                <Icon name="Compass" className="w-2.5 h-2.5 text-amber-400" /> Salons:
+                <Icon name="Compass" className="w-2.5 h-2.5 text-amber-400" /> Salons :
               </span>
               {[...DAY_BREAKOUT_ROOMS, ...customPrivateRooms].map(r => {
                 const occupants = players.filter(p => p.inRoom === r.id);
@@ -1375,17 +1486,36 @@
                   <div
                     key={r.id}
                     onClick={() => changeUserRoom(r.id)}
-                    className={`px-2 py-0.5 rounded-lg border flex items-center gap-1 cursor-pointer transition select-none text-[10px] shrink-0 ${
+                    className={`px-2 py-1 rounded-xl border flex flex-col gap-0.5 cursor-pointer transition select-none text-[10px] shrink-0 ${
                       isCurrent
-                        ? 'bg-amber-950/90 border-amber-400 text-amber-200'
+                        ? 'bg-amber-950/90 border-amber-400 ring-2 ring-amber-500/40 text-amber-200'
                         : 'bg-stone-900/80 border-stone-800 text-stone-400 hover:text-stone-200'
                     }`}
                   >
-                    <span>{r.icon}</span>
-                    <span className="font-semibold">{r.name}</span>
-                    <span className="text-[9px] font-mono text-stone-500">
-                      ({occupants.length + (hasStoryteller ? 1 : 0)})
-                    </span>
+                    <div className="flex items-center gap-1 font-bold text-[10px]">
+                      <span>{r.icon}</span>
+                      <span>{r.name}</span>
+                      <span className="text-[9px] font-mono text-stone-400">
+                        ({occupants.length + (hasStoryteller ? 1 : 0)})
+                      </span>
+                    </div>
+
+                    {/* LISTE DES NOMS DES OCCUPANTS DIRECTEMENT VISIBLES DESSUS */}
+                    <div className="flex items-center gap-1 flex-wrap text-[9px] max-w-[200px]">
+                      {hasStoryteller && (
+                        <span className="px-1 py-0.2 rounded bg-amber-500 text-stone-950 font-black">
+                          🧙‍♂️ {storyteller.name}
+                        </span>
+                      )}
+                      {occupants.map(p => (
+                        <span key={p.id} className="px-1 py-0.2 rounded bg-stone-800 text-stone-300 font-semibold truncate max-w-[80px]">
+                          {p.name}
+                        </span>
+                      ))}
+                      {!hasStoryteller && occupants.length === 0 && (
+                        <span className="text-stone-500 italic text-[8px]">Vide</span>
+                      )}
+                    </div>
                   </div>
                 );
               })}
@@ -1400,6 +1530,18 @@
               <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-2xl overflow-hidden border-2 border-amber-500/80 bg-stone-950 shadow-2xl group">
                 {isStorytellerMode && webcamStream ? (
                   <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+                ) : (!isStorytellerMode && remoteStreams[`botc_${roomCode}_host`]) ? (
+                  <video
+                    autoPlay
+                    playsInline
+                    ref={el => {
+                      if (el && remoteStreams[`botc_${roomCode}_host`]) {
+                        el.srcObject = remoteStreams[`botc_${roomCode}_host`];
+                        el.play().catch(() => {});
+                      }
+                    }}
+                    className="w-full h-full object-cover"
+                  />
                 ) : (
                   <div className="w-full h-full flex flex-col items-center justify-center bg-stone-900 text-2xl sm:text-3xl">
                     <span>{storyteller.avatar}</span>
@@ -1654,12 +1796,16 @@
                     const isVotingNow = nomination.active && currentVoter?.id === p.id;
                     const hasVoted = Boolean(nomination.votes && nomination.votes[p.id]);
 
+                    const peerKey = `botc_${roomCode}_p_${String(p.id).replace(/[^a-zA-Z0-9]/g, '')}`;
+                    const remoteStream = remoteStreams[peerKey];
+
                     return (
                       <div
                         key={p.id}
                         style={{ left, top }}
                         className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center z-20 group"
                       >
+                        {/* 5. GESTION DU VOTE INTERACTIF : AFFICHAGE DE LA MAIN AU MOMENT DU PASSAGE DE L'AIGUILLE */}
                         {nomination.active && (
                           <div
                             onClick={() => {
@@ -1670,15 +1816,17 @@
                               setNomination(updatedNom);
                               broadcastGameState(playersRef.current, phase, gameStarted, { nomination: updatedNom });
                             }}
-                            className={`mb-0.5 px-2 py-0.2 rounded-full text-[10px] font-black shadow-lg transition ${
-                              isStorytellerMode || isMe ? 'cursor-pointer' : 'cursor-default'
+                            className={`mb-0.5 px-2 py-0.5 rounded-full text-[10px] font-black shadow-lg transition select-none ${
+                              isVotingNow ? 'animate-bounce ring-4 ring-amber-400' : ''
+                            } ${
+                              isStorytellerMode || isMe ? 'cursor-pointer hover:scale-110' : 'cursor-default'
                             } ${
                               hasVoted
                                 ? 'bg-amber-400 text-stone-950 border-2 border-white ring-2 ring-amber-400/80 scale-105'
                                 : 'bg-stone-900 text-stone-400 border border-stone-700'
                             }`}
                           >
-                            {hasVoted ? '✋ OUI' : '— Non'}
+                            {hasVoted ? '✋ OUI' : (isVotingNow && (isMe || isStorytellerMode) ? '✋ Voter ?' : '— Non')}
                           </div>
                         )}
 
@@ -1687,6 +1835,10 @@
                           onClick={() => {
                             if (isStorytellerMode && phase === 'night') {
                               setVisitingCottagePlayer(p);
+                              broadcastGameState(playersRef.current, phase, gameStarted, {
+                                nightActiveCottageTargetId: p.id,
+                                nightActiveCottageGuestId: null
+                              });
                             }
                           }}
                           className={`relative w-12 h-12 sm:w-16 sm:h-16 rounded-2xl bg-stone-950 border-2 overflow-hidden shadow-2xl mb-1 transition cursor-pointer ${
@@ -1704,6 +1856,18 @@
                         >
                           {isMe && webcamStream ? (
                             <video ref={playerVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+                          ) : remoteStream ? (
+                            <video
+                              autoPlay
+                              playsInline
+                              ref={el => {
+                                if (el && remoteStream) {
+                                  el.srcObject = remoteStream;
+                                  el.play().catch(() => {});
+                                }
+                              }}
+                              className="w-full h-full object-cover"
+                            />
                           ) : (
                             <div className="w-full h-full flex flex-col items-center justify-center text-xl sm:text-2xl bg-stone-900/90 select-none">
                               <span>{p.avatar}</span>
@@ -2097,7 +2261,14 @@
                     </div>
                   </div>
                   <button
-                    onClick={() => { setVisitingCottagePlayer(null); setCottageGuestPlayerId(null); }}
+                    onClick={() => {
+                      setVisitingCottagePlayer(null);
+                      setCottageGuestPlayerId(null);
+                      broadcastGameState(playersRef.current, phase, gameStarted, {
+                        nightActiveCottageTargetId: null,
+                        nightActiveCottageGuestId: null
+                      });
+                    }}
                     className="text-stone-400 hover:text-white"
                   >
                     <Icon name="X" className="w-5 h-5" />
@@ -2119,51 +2290,68 @@
                       return (
                         <span className="px-2 py-1 rounded-lg bg-purple-950 border border-purple-500 text-purple-200 font-bold flex items-center gap-1">
                           <span>{guest.avatar} {guest.name} (Invité)</span>
-                          <button onClick={() => setCottageGuestPlayerId(null)} className="text-stone-400 hover:text-red-400">
-                            <Icon name="X" className="w-3 h-3" />
-                          </button>
+                          {isStorytellerMode && (
+                            <button
+                              onClick={() => {
+                                setCottageGuestPlayerId(null);
+                                broadcastGameState(playersRef.current, phase, gameStarted, { nightActiveCottageGuestId: null });
+                              }}
+                              className="text-stone-400 hover:text-red-400"
+                            >
+                              <Icon name="X" className="w-3 h-3" />
+                            </button>
+                          )}
                         </span>
                       );
                     })()}
                   </div>
                 </div>
 
-                <div className="p-2.5 bg-stone-900 rounded-xl border border-stone-800 text-xs space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-stone-400">Rôle réel du joueur :</span>
-                    <span className="font-bold text-amber-300">
-                      {visitingCottagePlayer.role ? ROLES_DB[visitingCottagePlayer.role]?.name : 'Aucun rôle'}
-                    </span>
+                {/* Rôle affiché uniquement au Conteur ou au joueur concerné */}
+                {(isStorytellerMode || (currentUserId && visitingCottagePlayer.id === currentUserId)) && (
+                  <div className="p-2.5 bg-stone-900 rounded-xl border border-stone-800 text-xs space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-stone-400">Rôle réel du joueur :</span>
+                      <span className="font-bold text-amber-300">
+                        {visitingCottagePlayer.role ? ROLES_DB[visitingCottagePlayer.role]?.name : 'Aucun rôle'}
+                      </span>
+                    </div>
+                    {visitingCottagePlayer.role && ROLES_DB[visitingCottagePlayer.role]?.ability && (
+                      <p className="text-stone-300 italic text-[10px] leading-relaxed pt-1 border-t border-stone-800">
+                        « {ROLES_DB[visitingCottagePlayer.role].ability} »
+                      </p>
+                    )}
                   </div>
-                  {visitingCottagePlayer.role && ROLES_DB[visitingCottagePlayer.role]?.ability && (
-                    <p className="text-stone-300 italic text-[10px] leading-relaxed pt-1 border-t border-stone-800">
-                      « {ROLES_DB[visitingCottagePlayer.role].ability} »
-                    </p>
-                  )}
-                </div>
+                )}
 
-                <div className="space-y-1">
-                  <label className="text-[9px] uppercase font-bold text-stone-400">
-                    Convoquer un autre joueur dans ce cottage (ex: Démon & Sbires) :
-                  </label>
-                  <select
-                    value={cottageGuestPlayerId || ''}
-                    onChange={(e) => setCottageGuestPlayerId(e.target.value ? Number(e.target.value) || e.target.value : null)}
-                    className="w-full px-2 py-1.5 bg-stone-900 border border-stone-700 rounded-xl text-xs text-white focus:outline-none"
-                  >
-                    <option value="">-- Convoquer un invité --</option>
-                    {players.filter(p => p.id !== visitingCottagePlayer.id).map(p => (
-                      <option key={p.id} value={p.id}>
-                        {p.name} ({p.role ? ROLES_DB[p.role]?.name : 'Sans rôle'})
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                {isStorytellerMode && (
+                  <div className="space-y-1">
+                    <label className="text-[9px] uppercase font-bold text-stone-400">
+                      Convoquer un autre joueur dans ce cottage (ex: Démon & Sbires) :
+                    </label>
+                    <select
+                      value={cottageGuestPlayerId || ''}
+                      onChange={(e) => {
+                        const guestId = e.target.value ? Number(e.target.value) || e.target.value : null;
+                        setCottageGuestPlayerId(guestId);
+                        broadcastGameState(playersRef.current, phase, gameStarted, { nightActiveCottageGuestId: guestId });
+                      }}
+                      className="w-full px-2 py-1.5 bg-stone-900 border border-stone-700 rounded-xl text-xs text-white focus:outline-none"
+                    >
+                      <option value="">-- Convoquer un invité --</option>
+                      {players.filter(p => p.id !== visitingCottagePlayer.id).map(p => (
+                        <option key={p.id} value={p.id}>
+                          {p.name} ({p.role ? ROLES_DB[p.role]?.name : 'Sans rôle'})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
                 {/* Tchat secret nocturne */}
                 <div className="space-y-1.5 pt-1 border-t border-stone-800">
                   <span className="text-[9px] uppercase font-bold text-stone-400 block">Messages silencieux de la nuit :</span>
-                  <div className="h-20 bg-stone-950 rounded-xl p-2 border border-stone-800 overflow-y-auto space-y-1 text-[11px]">
+                  <div className="h-24 bg-stone-950 rounded-xl p-2 border border-stone-800 overflow-y-auto space-y-1 text-[11px]">
                     {cottageChatMessages.length === 0 ? (
                       <span className="text-stone-600 italic">Aucun message chuchoté...</span>
                     ) : (
@@ -2182,8 +2370,15 @@
                       onChange={(e) => setCottageInputText(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' && cottageInputText.trim()) {
-                          setCottageChatMessages(prev => [...prev, { sender: isStorytellerMode ? storyteller.name : 'Moi', text: cottageInputText.trim() }]);
+                          const newMsg = {
+                            sender: isStorytellerMode ? storyteller.name : (myPlayer?.name || 'Moi'),
+                            text: cottageInputText.trim(),
+                            timestamp: Date.now()
+                          };
+                          const updatedMsgs = [...cottageChatMessages, newMsg];
+                          setCottageChatMessages(updatedMsgs);
                           setCottageInputText('');
+                          broadcastGameState(playersRef.current, phase, gameStarted, { cottageChatMessages: updatedMsgs });
                         }
                       }}
                       className="flex-1 px-2.5 py-1 bg-stone-900 border border-stone-700 rounded-lg text-xs text-white focus:outline-none"
@@ -2191,8 +2386,15 @@
                     <button
                       onClick={() => {
                         if (!cottageInputText.trim()) return;
-                        setCottageChatMessages(prev => [...prev, { sender: isStorytellerMode ? storyteller.name : 'Moi', text: cottageInputText.trim() }]);
+                        const newMsg = {
+                          sender: isStorytellerMode ? storyteller.name : (myPlayer?.name || 'Moi'),
+                          text: cottageInputText.trim(),
+                          timestamp: Date.now()
+                        };
+                        const updatedMsgs = [...cottageChatMessages, newMsg];
+                        setCottageChatMessages(updatedMsgs);
                         setCottageInputText('');
+                        broadcastGameState(playersRef.current, phase, gameStarted, { cottageChatMessages: updatedMsgs });
                       }}
                       className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold"
                     >
@@ -2204,10 +2406,63 @@
                 <div className="flex justify-between items-center pt-2 border-t border-stone-800">
                   <span className="text-[10px] text-stone-500 italic">Vocal actif uniquement entre vous.</span>
                   <button
-                    onClick={() => { setVisitingCottagePlayer(null); setCottageGuestPlayerId(null); }}
+                    onClick={() => {
+                      setVisitingCottagePlayer(null);
+                      setCottageGuestPlayerId(null);
+                      broadcastGameState(playersRef.current, phase, gameStarted, {
+                        nightActiveCottageTargetId: null,
+                        nightActiveCottageGuestId: null
+                      });
+                    }}
                     className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl shadow"
                   >
                     Quitter le cottage
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 3. MODALE DE LA BOÎTE DE MESSAGERIE HISTORIQUE DU JOUEUR */}
+          {cottageMailboxOpen && (
+            <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in">
+              <div className="bg-stone-950 border-2 border-amber-600 rounded-3xl max-w-md w-full p-5 shadow-2xl space-y-3 max-h-[80vh] flex flex-col">
+                <div className="flex items-center justify-between border-b border-stone-800 pb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">✉️</span>
+                    <h4 className="font-serif font-bold text-base text-amber-200">
+                      Messages Secrets du Conteur
+                    </h4>
+                  </div>
+                  <button onClick={() => setCottageMailboxOpen(false)} className="text-stone-400 hover:text-white">
+                    <Icon name="X" className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto space-y-2 pr-1 text-xs">
+                  {cottageChatMessages.length === 0 ? (
+                    <p className="text-stone-500 italic text-center py-6">Aucun message secret reçu pour le moment.</p>
+                  ) : (
+                    cottageChatMessages.map((msg, idx) => (
+                      <div key={idx} className="p-2.5 rounded-xl bg-stone-900 border border-stone-800 space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-amber-400">{msg.sender}</span>
+                          <span className="text-[9px] text-stone-500 font-mono">
+                            {msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                          </span>
+                        </div>
+                        <p className="text-stone-200 text-xs">{msg.text}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                <div className="pt-2 text-right border-t border-stone-800">
+                  <button
+                    onClick={() => setCottageMailboxOpen(false)}
+                    className="px-4 py-1.5 bg-stone-800 hover:bg-stone-700 text-stone-200 rounded-xl text-xs font-semibold"
+                  >
+                    Fermer
                   </button>
                 </div>
               </div>
