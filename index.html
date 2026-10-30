@@ -361,10 +361,21 @@
       const [customPrivateRooms, setCustomPrivateRooms] = useState([]);
       const [visitingCottagePlayer, setVisitingCottagePlayer] = useState(null);
       const [cottageGuestPlayerId, setCottageGuestPlayerId] = useState(null);
-      const [cottageChatMessages, setCottageChatMessages] = useState([]);
+      const [cottageChatMessages, setCottageChatMessages] = useState([]); // [{ sender, text, targetPlayerId, timestamp }]
       const [cottageInputText, setCottageInputText] = useState('');
       const [cottageMailboxOpen, setCottageMailboxOpen] = useState(false);
       const [hasUnreadMessages, setHasUnreadMessages] = useState(false);
+
+      // Messages visibles uniquement par l'utilisateur connecté ou le MJ
+      const visibleCottageMessages = useMemo(() => {
+        if (isStorytellerMode) return cottageChatMessages;
+        if (!currentUserId) return [];
+        return cottageChatMessages.filter(msg => 
+          msg.targetPlayerId === currentUserId || 
+          msg.guestPlayerId === currentUserId || 
+          msg.senderId === currentUserId
+        );
+      }, [cottageChatMessages, isStorytellerMode, currentUserId]);
 
       // 7. NETTOYAGE AUTOMATIQUE DES SALONS D'APARTÉ VIDES
       useEffect(() => {
@@ -454,11 +465,11 @@
         try {
           if (!audioStream) {
             const stream = await navigator.mediaDevices.getUserMedia({ 
-              audio: { echoCancellation: true, noiseSuppression: true } 
+              audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } 
             });
             setAudioStream(stream);
             setIsMicMuted(false);
-            if (!isStorytellerMode) {
+            if (peerInstance.current && !isStorytellerMode) {
               connectToPeer(`botc_${roomCode}_host`);
             }
           } else {
@@ -499,7 +510,9 @@
                 playerVideoRef.current.srcObject = stream;
                 playerVideoRef.current.play().catch(() => {});
               }
-              connectToPeer(`botc_${roomCode}_host`);
+              if (peerInstance.current) {
+                connectToPeer(`botc_${roomCode}_host`);
+              }
             }
           } catch (err) {
             console.warn("Erreur webcam:", err);
@@ -606,8 +619,15 @@
               if (data.voteHistory) setVoteHistory(data.voteHistory);
               if (data.cottageChatMessages) {
                 setCottageChatMessages(data.cottageChatMessages);
-                if (data.cottageChatMessages.length > cottageChatMessages.length) {
-                  setHasUnreadMessages(true);
+                // 1. NOTIFIER UNIQUEMENT LE JOUEUR CONCERNÉ PAR LE MESSAGE
+                if (!isStorytellerMode && currentUserId) {
+                  const myNewMsgs = data.cottageChatMessages.filter(m => 
+                    (m.targetPlayerId === currentUserId || m.guestPlayerId === currentUserId) &&
+                    m.senderId !== currentUserId
+                  );
+                  if (myNewMsgs.length > 0) {
+                    setHasUnreadMessages(true);
+                  }
                 }
               }
               // 3. OUVERTURE AUTOMATIQUE DU COTTAGE CHEZ LE JOUEUR
@@ -844,74 +864,69 @@
 
       const currentVoter = nomination.clockIndex >= 0 ? orderedVoters[nomination.clockIndex] : null;
 
-      // REFONTE COMPLETE DU TIMER D'ACCUSATION : progression fluide de chaque vote
-      useEffect(() => {
-        if (!nomination.active || !nomination.isRunning || orderedVoters.length === 0) return;
+      // 2. ACCUSATION PAS-À-PAS : AVANCER VERS LE JOUEUR SUIVANT LORSQU'IL A VOTÉ OU CONFIRMÉ
+      const advanceVoteToNextPlayer = () => {
+        if (!nomination.active || orderedVoters.length === 0) return;
+        playSound('tick');
+        const nextIdx = nomination.clockIndex + 1;
 
-        const timer = setTimeout(() => {
-          playSound('tick');
-          const nextIdx = nomination.clockIndex + 1;
+        if (nextIdx >= orderedVoters.length) {
+          playSound('gavel');
+          const totalVotes = Object.values(nomination.votes || {}).filter(Boolean).length;
+          const aliveTotal = playersRef.current.filter(p => p.alive).length;
+          const required = Math.ceil(aliveTotal / 2);
+          const nominee = playersRef.current.find(p => p.id === nomination.nomineeId);
 
-          if (nextIdx >= orderedVoters.length) {
-            playSound('gavel');
-            const totalVotes = Object.values(nomination.votes || {}).filter(Boolean).length;
-            const aliveTotal = playersRef.current.filter(p => p.alive).length;
-            const required = Math.ceil(aliveTotal / 2);
-            const nominee = playersRef.current.find(p => p.id === nomination.nomineeId);
-
-            if (totalVotes >= required && nominee) {
-              if (!onTheBlock || totalVotes > onTheBlock.votes) {
-                setOnTheBlock({ playerId: nominee.id, playerName: nominee.name, votes: totalVotes });
-              } else if (onTheBlock && totalVotes === onTheBlock.votes) {
-                setOnTheBlock(null);
-              }
+          if (totalVotes >= required && nominee) {
+            if (!onTheBlock || totalVotes > onTheBlock.votes) {
+              setOnTheBlock({ playerId: nominee.id, playerName: nominee.name, votes: totalVotes });
+            } else if (onTheBlock && totalVotes === onTheBlock.votes) {
+              setOnTheBlock(null);
             }
-
-            // Consommation du vote fantôme
-            const updatedAfterGhosts = playersRef.current.map(p => {
-              if (!p.alive && nomination.votes && nomination.votes[p.id]) {
-                return { ...p, ghostVote: false };
-              }
-              return p;
-            });
-            setPlayers(updatedAfterGhosts);
-
-            if (nominee) {
-              const nominator = playersRef.current.find(p => p.id === nomination.nominatorId);
-              const votersList = playersRef.current.map(p => ({
-                id: p.id,
-                name: p.name,
-                voted: Boolean(nomination.votes && nomination.votes[p.id])
-              }));
-              const newRecord = {
-                day: dayNumber,
-                nominatorName: nominator ? nominator.name : 'Inconnu',
-                nomineeName: nominee.name,
-                votesCount: totalVotes,
-                majorityRequired: required,
-                voters: votersList
-              };
-              setVoteHistory(vh => [...vh, newRecord]);
-              broadcastGameState(updatedAfterGhosts, phase, gameStarted, {
-                voteHistory: [...voteHistory, newRecord],
-                nomination: { ...nomination, isRunning: false, clockIndex: -1 }
-              });
-            } else {
-              broadcastGameState(updatedAfterGhosts, phase, gameStarted, {
-                nomination: { ...nomination, isRunning: false, clockIndex: -1 }
-              });
-            }
-
-            setNomination(prev => ({ ...prev, isRunning: false, clockIndex: -1 }));
-          } else {
-            const updatedNom = { ...nomination, clockIndex: nextIdx };
-            setNomination(updatedNom);
-            broadcastGameState(playersRef.current, phase, gameStarted, { nomination: updatedNom });
           }
-        }, nomination.speed || 1800);
 
-        return () => clearTimeout(timer);
-      }, [nomination.active, nomination.isRunning, nomination.clockIndex, orderedVoters, onTheBlock, dayNumber, voteHistory, phase, gameStarted]);
+          // Consommation du vote fantôme
+          const updatedAfterGhosts = playersRef.current.map(p => {
+            if (!p.alive && nomination.votes && nomination.votes[p.id]) {
+              return { ...p, ghostVote: false };
+            }
+            return p;
+          });
+          setPlayers(updatedAfterGhosts);
+
+          if (nominee) {
+            const nominator = playersRef.current.find(p => p.id === nomination.nominatorId);
+            const votersList = playersRef.current.map(p => ({
+              id: p.id,
+              name: p.name,
+              voted: Boolean(nomination.votes && nomination.votes[p.id])
+            }));
+            const newRecord = {
+              day: dayNumber,
+              nominatorName: nominator ? nominator.name : 'Inconnu',
+              nomineeName: nominee.name,
+              votesCount: totalVotes,
+              majorityRequired: required,
+              voters: votersList
+            };
+            setVoteHistory(vh => [...vh, newRecord]);
+            broadcastGameState(updatedAfterGhosts, phase, gameStarted, {
+              voteHistory: [...voteHistory, newRecord],
+              nomination: { ...nomination, isRunning: false, clockIndex: -1 }
+            });
+          } else {
+            broadcastGameState(updatedAfterGhosts, phase, gameStarted, {
+              nomination: { ...nomination, isRunning: false, clockIndex: -1 }
+            });
+          }
+
+          setNomination(prev => ({ ...prev, isRunning: false, clockIndex: -1 }));
+        } else {
+          const updatedNom = { ...nomination, clockIndex: nextIdx };
+          setNomination(updatedNom);
+          broadcastGameState(playersRef.current, phase, gameStarted, { nomination: updatedNom });
+        }
+      };
 
       const handleApproveAccusation = () => {
         if (!pendingAccusation) return;
@@ -1716,51 +1731,52 @@
                           {nomination.clockIndex === -1 ? (
                             <span className="text-amber-300 italic">Prêt à démarrer</span>
                           ) : (
-                            <>Aiguille sur : <strong className="text-amber-300">{currentVoter?.name}</strong></>
+                            <>Au tour de : <strong className="text-amber-300">{currentVoter?.name}</strong></>
                           )}
                         </div>
 
-                        {isStorytellerMode && (
-                          <div className="flex items-center gap-1">
-                            {!nomination.isRunning ? (
+                        {/* 2. COMMANDES DU TOUR DE VOTE : L'AIGUILLE AVANCE SUR DÉCISION / VALIDATION */}
+                        <div className="flex items-center gap-1">
+                          {nomination.clockIndex === -1 ? (
+                            isStorytellerMode && (
                               <button
                                 onClick={() => {
-                                  const newNom = {
-                                    ...nomination,
-                                    isRunning: true,
-                                    clockIndex: nomination.clockIndex === -1 ? 0 : nomination.clockIndex
-                                  };
+                                  const newNom = { ...nomination, isRunning: true, clockIndex: 0 };
                                   setNomination(newNom);
                                   broadcastGameState(playersRef.current, phase, gameStarted, { nomination: newNom });
                                 }}
-                                className="px-2 py-0.5 bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold rounded text-[11px] flex items-center gap-1 shadow"
+                                className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold rounded text-[11px] flex items-center gap-1 shadow"
                               >
-                                <Icon name="Play" className="w-3 h-3 fill-stone-950" /> {nomination.clockIndex === -1 ? 'Lancer' : 'Reprendre'}
+                                <Icon name="Play" className="w-3 h-3 fill-stone-950" /> Démarrer le vote
                               </button>
-                            ) : (
-                              <button
-                                onClick={() => {
-                                  const newNom = { ...nomination, isRunning: false };
-                                  setNomination(newNom);
-                                  broadcastGameState(playersRef.current, phase, gameStarted, { nomination: newNom });
-                                }}
-                                className="px-2 py-0.5 bg-stone-700 hover:bg-stone-600 text-white font-bold rounded text-[11px] flex items-center gap-1"
-                              >
-                                <Icon name="Pause" className="w-3 h-3" /> Pause
-                              </button>
-                            )}
-                            <button
-                              onClick={() => {
-                                const newNom = { ...nomination, active: false, isRunning: false, clockIndex: -1 };
-                                setNomination(newNom);
-                                broadcastGameState(playersRef.current, phase, gameStarted, { nomination: newNom });
-                              }}
-                              className="p-1 bg-stone-800 hover:bg-red-900 rounded text-stone-300"
-                            >
-                              <Icon name="X" className="w-3 h-3" />
-                            </button>
-                          </div>
-                        )}
+                            )
+                          ) : (
+                            <>
+                              {(isStorytellerMode || (currentVoter && currentVoter.id === currentUserId)) && (
+                                <button
+                                  onClick={advanceVoteToNextPlayer}
+                                  className="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded text-[10px] flex items-center gap-1 shadow animate-pulse"
+                                  title="Valider et faire avancer l'aiguille vers le votant suivant"
+                                >
+                                  <span>Suivant →</span>
+                                </button>
+                              )}
+                              {isStorytellerMode && (
+                                <button
+                                  onClick={() => {
+                                    const newNom = { ...nomination, active: false, isRunning: false, clockIndex: -1 };
+                                    setNomination(newNom);
+                                    broadcastGameState(playersRef.current, phase, gameStarted, { nomination: newNom });
+                                  }}
+                                  className="p-1 bg-stone-800 hover:bg-red-900 rounded text-stone-300"
+                                  title="Annuler le vote"
+                                >
+                                  <Icon name="X" className="w-3 h-3" />
+                                </button>
+                              )}
+                            </>
+                          )}
+                        </div>
                       </>
                     ) : (
                       <>
@@ -1799,13 +1815,21 @@
                     const peerKey = `botc_${roomCode}_p_${String(p.id).replace(/[^a-zA-Z0-9]/g, '')}`;
                     const remoteStream = remoteStreams[peerKey];
 
+                    // 3. CALCUL DE LA POSITION LATÉRALE DU BOUTON DE VOTE (GAUCHE / DROITE / CENTRE)
+                    const xPercent = 50 + radiusPercent * Math.cos(angle);
+                    const voteBadgeClass = xPercent > 55
+                      ? 'absolute left-full ml-2 top-1/2 -translate-y-1/2'
+                      : xPercent < 45
+                      ? 'absolute right-full mr-2 top-1/2 -translate-y-1/2'
+                      : 'mb-1';
+
                     return (
                       <div
                         key={p.id}
                         style={{ left, top }}
                         className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center z-20 group"
                       >
-                        {/* 5. GESTION DU VOTE INTERACTIF : AFFICHAGE DE LA MAIN AU MOMENT DU PASSAGE DE L'AIGUILLE */}
+                        {/* 3. OPTION POUR VOTER : DÉPORTÉE À DROITE POUR LES JOUEURS DE DROITE, À GAUCHE POUR CEUX DE GAUCHE */}
                         {nomination.active && (
                           <div
                             onClick={() => {
@@ -1816,8 +1840,8 @@
                               setNomination(updatedNom);
                               broadcastGameState(playersRef.current, phase, gameStarted, { nomination: updatedNom });
                             }}
-                            className={`mb-0.5 px-2 py-0.5 rounded-full text-[10px] font-black shadow-lg transition select-none ${
-                              isVotingNow ? 'animate-bounce ring-4 ring-amber-400' : ''
+                            className={`${voteBadgeClass} z-40 px-2 py-0.5 rounded-full text-[10px] font-black shadow-xl transition select-none whitespace-nowrap ${
+                              isVotingNow ? 'animate-bounce ring-4 ring-amber-400 bg-amber-500 text-stone-950' : ''
                             } ${
                               isStorytellerMode || isMe ? 'cursor-pointer hover:scale-110' : 'cursor-default'
                             } ${
@@ -1826,7 +1850,7 @@
                                 : 'bg-stone-900 text-stone-400 border border-stone-700'
                             }`}
                           >
-                            {hasVoted ? '✋ OUI' : (isVotingNow && (isMe || isStorytellerMode) ? '✋ Voter ?' : '— Non')}
+                            {hasVoted ? '✋ OUI' : (isVotingNow && (isMe || isStorytellerMode) ? '✋ Lever main ?' : '— Non')}
                           </div>
                         )}
 
@@ -2695,79 +2719,47 @@
 
           {/* MODALE : WIKI OFFICIEL */}
           {wikiRoleModal && (
-            <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50">
-              <div className="bg-stone-950 border-2 border-amber-600 rounded-2xl max-w-sm w-full p-4 shadow-2xl space-y-3">
-                <div className="flex items-center justify-between border-b border-stone-800 pb-2">
-                  <div className="flex items-center gap-2">
-                    <img src={wikiRoleModal.cdnIcon} alt={wikiRoleModal.name} className="w-8 h-8 object-contain" onError={(e) => { e.target.style.display = 'none'; }} />
-                    <h3 className="font-serif font-black text-lg text-amber-200">{wikiRoleModal.name}</h3>
-                  </div>
-                  <button onClick={() => setWikiRoleModal(null)} className="text-stone-400 hover:text-white">
-                    <Icon name="X" className="w-4 h-4" />
-                  </button>
-                </div>
-                <div className="p-2.5 rounded-xl bg-stone-900 border border-stone-800 text-xs italic text-stone-200">
-                  « {wikiRoleModal.ability} »
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* MODALE : PARAMÈTRES */}
-          {settingsModalOpen && (
-            <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-              <div className="bg-stone-950 border-2 border-stone-700 rounded-2xl max-w-xs w-full p-4 shadow-2xl space-y-3 text-xs">
-                <div className="flex items-center justify-between border-b border-stone-800 pb-2">
-                  <h4 className="font-serif font-bold text-sm text-amber-200">Paramètres</h4>
-                  <button onClick={() => setSettingsModalOpen(false)} className="text-stone-400 hover:text-white">
-                    <Icon name="X" className="w-4 h-4" />
-                  </button>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-stone-300 font-semibold text-[11px]">
-                    Vitesse balayage vote : {nomination.speed} ms
-                  </label>
-                  <input
-                    type="range"
-                    min="800"
-                    max="3000"
-                    step="100"
-                    value={nomination.speed}
-                    onChange={(e) => setNomination(n => ({ ...n, speed: Number(e.target.value) }))}
-                    className="w-full accent-amber-500"
-                  />
-                </div>
-
-                {isStorytellerMode && (
-                  <div className="space-y-1.5 pt-2 border-t border-stone-800">
-                    <span className="text-stone-400 text-[10px] block">Déclarer la victoire :</span>
-                    <div className="flex gap-1.5">
-                      <button
-                        onClick={() => { setVictoryModal('good'); setSettingsModalOpen(false); playSound('bell'); }}
-                        className="flex-1 py-1 bg-blue-900/80 hover:bg-blue-800 border border-blue-500 text-blue-200 font-bold rounded-lg text-xs"
-                      >
-                        Bien
-                      </button>
-                      <button
-                        onClick={() => { setVictoryModal('evil'); setSettingsModalOpen(false); playSound('bell'); }}
-                        className="flex-1 py-1 bg-red-900/80 hover:bg-red-800 border border-red-500 text-red-200 font-bold rounded-lg text-xs"
-                      >
-                        Mal
-                      </button>
+            <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in">
+              <div className="bg-stone-950 border-2 border-amber-600 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+                <div className="flex items-center justify-between border-b border-stone-800 pb-3">
+                  <div className="flex items-center gap-3">
+                    <img src={wikiRoleModal.cdnIcon} alt={wikiRoleModal.name} className="w-12 h-12 object-contain drop-shadow" onError={(e) => { e.target.style.display = 'none'; }} />
+                    <div>
+                      <h3 className="font-serif font-black text-xl text-amber-200">{wikiRoleModal.name}</h3>
+                      <span className="text-[10px] uppercase font-mono tracking-widest text-amber-400">{wikiRoleModal.team}</span>
                     </div>
                   </div>
-                )}
+                  <button onClick={() => setWikiRoleModal(null)} className="text-stone-400 hover:text-white">
+                    <Icon name="X" className="w-5 h-5" />
+                  </button>
+                </div>
 
-                <div className="pt-2 border-t border-stone-800">
+                <div className="space-y-3 text-xs leading-relaxed">
+                  <div className="p-3 rounded-xl bg-stone-900/90 border border-stone-800">
+                    <div className="text-[10px] uppercase font-bold text-stone-400 mb-1">Capacité officielle :</div>
+                    <p className="text-stone-100 font-serif italic text-sm">« {wikiRoleModal.ability} »</p>
+                  </div>
+
+                  {wikiRoleModal.wiki && (
+                    <>
+                      <div className="p-3 rounded-xl bg-indigo-950/40 border border-indigo-900/60">
+                        <div className="text-[10px] uppercase font-bold text-indigo-400 mb-1">Comment l’animer (Storyteller) :</div>
+                        <p className="text-stone-300 text-xs">{wikiRoleModal.wiki.howToRun}</p>
+                      </div>
+                      <div className="p-3 rounded-xl bg-amber-950/40 border border-amber-900/60">
+                        <div className="text-[10px] uppercase font-bold text-amber-400 mb-1">Conseils tactiques :</div>
+                        <p className="text-stone-300 text-xs">{wikiRoleModal.wiki.tips}</p>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                <div className="pt-2 text-right">
                   <button
-                    onClick={() => {
-                      setInLobbyScreen(true);
-                      setSettingsModalOpen(false);
-                    }}
-                    className="w-full py-1.5 bg-red-950 hover:bg-red-900 text-red-200 rounded-lg font-semibold flex items-center justify-center gap-1.5"
+                    onClick={() => setWikiRoleModal(null)}
+                    className="px-4 py-1.5 bg-stone-800 hover:bg-stone-700 text-stone-200 font-semibold rounded-xl text-xs"
                   >
-                    <Icon name="LogOut" className="w-3.5 h-3.5" /> Quitter la salle
+                    Fermer
                   </button>
                 </div>
               </div>
