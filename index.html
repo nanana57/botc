@@ -5,25 +5,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Blood on the Clocktower Online</title>
   
-  <!-- Chargement de Tailwind CSS -->
+  <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   
-  <!-- Chargement de React 18 & ReactDOM -->
+  <!-- React 18 & ReactDOM -->
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   
-  <!-- Chargement de Babel Standalone pour compiler JSX directement dans le navigateur -->
+  <!-- Babel Standalone pour compiler JSX dans le navigateur -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 </head>
 <body class="bg-[#100a14] text-stone-100 overflow-x-hidden font-sans select-none">
   <div id="root">
-    <div class="min-h-screen flex flex-col items-center justify-center p-6 text-center">
-      <div class="w-16 h-16 rounded-full bg-purple-950/80 border-2 border-amber-500/80 flex items-center justify-center text-3xl mb-3 animate-pulse">
-        😈
-      </div>
-      <div class="font-serif font-black tracking-widest text-amber-200 text-lg">
-        CHARGEMENT DU GRIMOIRE...
-      </div>
+    <div class="min-h-screen flex items-center justify-center text-amber-200 font-serif text-lg">
+      Chargement du Grimoire...
     </div>
   </div>
 
@@ -44,18 +39,13 @@
       return code;
     };
 
-    // Client REST Firebase temps réel direct
+    // Client REST Firebase léger
     const firebaseSync = {
       async getRoom(code) {
         try {
-          const res = await fetch(`${FIREBASE_DB_URL}/rooms/${code}.json`);
+          const res = await fetch(`${FIREBASE_DB_URL}/rooms/${code}.json?nocache=${Date.now()}`);
           if (!res.ok) return null;
-          const data = await res.json();
-          if (!data) return null;
-          if (data.players && !Array.isArray(data.players)) {
-            data.players = Object.values(data.players);
-          }
-          return data;
+          return await res.json();
         } catch (e) {
           return null;
         }
@@ -78,42 +68,6 @@
           });
         } catch (e) {}
       }
-    };
-
-    // Fonction d'assainissement systématique des joueurs pour éviter les crashs de rendu
-    const sanitizePlayer = (p, idx = 0) => {
-      if (!p || typeof p !== 'object') {
-        return {
-          id: Date.now() + Math.random(),
-          name: `Joueur ${idx + 1}`,
-          avatar: BOT_AVATARS[idx % BOT_AVATARS.length],
-          role: null,
-          hypothesisRole: null,
-          alive: true,
-          ghostVote: true,
-          reminders: [],
-          inRoom: 'square',
-          micActive: true
-        };
-      }
-      return {
-        id: p.id || (Date.now() + Math.random()),
-        name: p.name || `Joueur ${idx + 1}`,
-        avatar: p.avatar || BOT_AVATARS[idx % BOT_AVATARS.length],
-        role: p.role || null,
-        hypothesisRole: p.hypothesisRole || null,
-        alive: p.alive !== undefined ? Boolean(p.alive) : true,
-        ghostVote: p.ghostVote !== undefined ? Boolean(p.ghostVote) : true,
-        reminders: Array.isArray(p.reminders) ? p.reminders : [],
-        inRoom: p.inRoom || 'square',
-        micActive: p.micActive !== undefined ? Boolean(p.micActive) : true
-      };
-    };
-
-    const sanitizePlayerList = (list) => {
-      if (!list) return [];
-      const arr = Array.isArray(list) ? list : Object.values(list);
-      return arr.filter(Boolean).map((p, idx) => sanitizePlayer(p, idx));
     };
 
     // ==========================================
@@ -154,7 +108,7 @@
         LogIn: <><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></>,
         LogOut: <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></>,
         ArrowRight: <><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></>,
-        Radio: <><circle cx="12" cy="2" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49"/><path d="M7.76 16.24a6 6 0 0 1 0-8.49"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 19.07a10 10 0 0 1 0-14.14"/></>,
+        Radio: <><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49"/><path d="M7.76 16.24a6 6 0 0 1 0-8.49"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 19.07a10 10 0 0 1 0-14.14"/></>,
         Timer: <><line x1="10" y1="2" x2="14" y2="2"/><line x1="12" y1="14" x2="15" y2="11"/><circle cx="12" cy="14" r="8"/></>,
         DoorOpen: <><path d="M13 4h3a2 2 0 0 1 2 2v14"/><path d="M2 20h20"/><path d="M13 20V4a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v16"/><circle cx="9" cy="12" r="1"/></>,
         Info: <><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></>
@@ -178,7 +132,7 @@
     };
 
     // ==========================================
-    // ASSETS & DATA : JETONS OFFICIELS BOTC
+    // ASSETS & DONNÉES OFFICIELLES BOTC
     // ==========================================
     const BOTC_ICON_CDN = "https://raw.githubusercontent.com/bra1n/townsquare/develop/src/assets/icons/";
 
@@ -226,7 +180,7 @@
       lunatic: { id: 'lunatic', name: 'Lunatique', team: 'outsider', icon: '🤡', cdnIcon: `${BOTC_ICON_CDN}lunatic.png`, firstNight: 8, otherNight: 20, ability: "Vous croyez être un Démon, mais vous ne l'êtes pas. Le vrai Démon connaît votre identité et vos choix nocturnes.", reminders: ['Attaqué'], wiki: { howToRun: "Faites croire au Lunatique qu'il est le Démon avec de faux sbires et faux choix.", tips: "Si vos cibles nocturnes ne meurent jamais, commencez à vous poser des questions !" } },
       widow: { id: 'widow', name: 'Veuve Noire', team: 'minion', icon: '🕷️', cdnIcon: `${BOTC_ICON_CDN}widow.png`, firstNight: 18, otherNight: 0, ability: "La 1ère nuit, regardez le Grimoire et choisissez un joueur : il est empoisonné. 1 bon joueur sait qu'une Veuve est en jeu.", reminders: ['Empoisonné'], wiki: { howToRun: "Montrez le Grimoire à la Veuve. Elle empoisonne un joueur pour toute la partie.", tips: "Neutralisez immédiatement l'informateur le plus dangereux du Bien." } },
       goblin: { id: 'goblin', name: 'Gobelin', team: 'minion', icon: '👺', cdnIcon: `${BOTC_ICON_CDN}goblin.png`, firstNight: 0, otherNight: 0, ability: "Si vous revendiquez publiquement être le Gobelin lors de votre nomination et que vous êtes exécuté ce jour, le Mal gagne.", reminders: ['Revendiqué'], wiki: { howToRun: "Si le Gobelin a crié être le Gobelin et meurt sur le billot, sonnez la victoire du Mal.", tips: "Semez le doute en accusant vos adversaires de refuser de vous pendre par peur." } },
-      leviathan: { id: 'leviathan', name: 'Léviathan', team: 'demon', icon: '🐉', cdnIcon: `${BOTC_ICON_CDN}leviathan.png`, firstNight: 0, otherNight: 0, ability: "Si plus d'1 bon joueur est exécuté, le Mal gagne. Tous les joueurs savent que vous êtes en jeu. Après le Jour 5, le Mal gagne.", reminders: ['Jour 1', 'Bons exécutés'], wiki: { howToRun: "Annoncez au début que le Léviathan est en jeu. Comptez les exécutions de bons joueurs.", tips: "Résistez pendant 5 jours ou poussez le village à faire deux fausses exécutions !" } },
+      leviathan: { id: 'leviathan', name: 'Léviathan', team: 'demon', icon: '🐉', cdnIcon: `${BOTC_ICON_CDN}leviathan.png`, firstNight: 0, otherNight: 0, ability: "Si plus d'1 bon joueur est exécuté, le Mal gagne. Tous les joueurs savent que vous êtes en jeu. Après le Jour 5, le Mal gagne.", reminders: ['Jour 1', 'Jour 2', 'Jour 3', 'Jour 4', 'Jour 5', 'Bons exécutés'], wiki: { howToRun: "Annoncez au début que le Léviathan est en jeu. Comptez les exécutions de bons joueurs.", tips: "Résistez pendant 5 jours ou poussez le village à faire deux fausses exécutions !" } },
       butler: { id: 'butler', name: 'Majordome', team: 'outsider', icon: '🍷', cdnIcon: `${BOTC_ICON_CDN}butler.png`, firstNight: 38, otherNight: 67, ability: "Chaque nuit, choisissez un joueur (pas vous) : demain, vous ne pourrez voter que s'il vote aussi.", reminders: ['Maître'], wiki: { howToRun: "Le Majordome choisit son Maître la nuit. Lors des votes, il ne peut lever la main que si le Maître vote.", tips: "Choisissez un joueur actif et vivant comme maître pour ne pas gâcher votre voix." } },
       drunk: { id: 'drunk', name: 'Ivrogne', team: 'outsider', icon: '🍺', cdnIcon: `${BOTC_ICON_CDN}drunk.png`, firstNight: 0, otherNight: 0, ability: "Vous croyez être un Villageois, mais votre pouvoir est inopérant car vous êtes l'Ivrogne.", reminders: ['Ivre'], wiki: { howToRun: "Donnez-lui un jeton de Villageois. Ses informations nocturnes peuvent être fausses selon votre bon vouloir.", tips: "Si toutes vos informations semblent contredire le bon sens du village, vous êtes peut-être l'Ivrogne !" } },
       recluse: { id: 'recluse', name: 'Reclus', team: 'outsider', icon: '🕯️', cdnIcon: `${BOTC_ICON_CDN}recluse.png`, firstNight: 0, otherNight: 0, ability: "Vous pouvez apparaître comme maléfique et comme Sbire ou Démon, même mort.", reminders: [], wiki: { howToRun: "Vous pouvez décider qu'il enregistre comme maléfique aux pouvoirs des enquêteurs.", tips: "Avouez tôt votre rôle pour que le village comprenne les lectures erronées sur vous." } },
@@ -276,8 +230,26 @@
     const BOT_NAMES = ['Brockwell', 'Danielle', 'Kapt’n Kadaver', 'Elizabeth', 'Markus', 'Elin', 'Beardy', 'Ginge', 'Conor', 'Rhett', 'Kurobold', 'Schnauzer'];
     const BOT_AVATARS = ['🐴', '🐺', '🦉', '🦊', '🦅', '🐗', '🦇', '🐈‍⬛', '🦌', '🗡️', '🛡️', '🕯️'];
 
+    // Sanitizer strict des données de joueurs
+    const sanitizePlayerList = (list) => {
+      if (!list) return [];
+      const arr = Array.isArray(list) ? list : Object.values(list);
+      return arr.map(p => ({
+        id: p.id || (Date.now() + Math.random()),
+        name: p.name || 'Joueur',
+        avatar: p.avatar || '🐴',
+        role: p.role || null,
+        hypothesisRole: p.hypothesisRole || null,
+        alive: p.alive !== undefined ? Boolean(p.alive) : true,
+        ghostVote: p.ghostVote !== undefined ? Boolean(p.ghostVote) : true,
+        reminders: Array.isArray(p.reminders) ? p.reminders : [],
+        inRoom: p.inRoom || 'square',
+        micActive: p.micActive !== undefined ? Boolean(p.micActive) : true
+      }));
+    };
+
     function App() {
-      // --- ÉCRAN 1 : LOBBY & AUTHENTIFICATION ---
+      // --- LOBBY & AUTHENTIFICATION ---
       const [inLobbyScreen, setInLobbyScreen] = useState(true);
       const [authMode, setAuthMode] = useState('create');
       const [userPseudo, setUserPseudo] = useState('');
@@ -287,7 +259,7 @@
       const [joinError, setJoinError] = useState(null);
       const [isConnecting, setIsConnecting] = useState(false);
 
-      // --- STORYTELLER (CONTEUR) EN HAUT À GAUCHE ---
+      // --- STORYTELLER (CONTEUR) SÉPARÉ ---
       const [storyteller, setStoryteller] = useState({
         name: 'Arif',
         avatar: '🧙‍♂️',
@@ -326,6 +298,9 @@
 
       // --- JOUEURS DU CERCLE ---
       const [players, setPlayers] = useState([]);
+      const playersRef = useRef([]);
+      playersRef.current = players;
+
       const [rolesDistributedToPlayers, setRolesDistributedToPlayers] = useState(false);
       const [gameStarted, setGameStarted] = useState(false);
 
@@ -366,10 +341,12 @@
 
       // --- WEBCAMS & MICRO ---
       const videoRef = useRef(null);
+      const playerVideoRef = useRef(null);
       const [webcamStream, setWebcamStream] = useState(null);
       const [isMicMuted, setIsMicMuted] = useState(false);
+      const [playerCamActive, setPlayerCamActive] = useState(false);
 
-      // --- AUDIO SYNTHÉTISEUR ---
+      // Audio synthétiseur
       const playSound = (type = 'bell') => {
         try {
           const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -408,13 +385,22 @@
         if (webcamStream) {
           webcamStream.getTracks().forEach(t => t.stop());
           setWebcamStream(null);
-          setStoryteller(s => ({ ...s, cameraActive: false }));
+          if (isStorytellerMode) {
+            setStoryteller(s => ({ ...s, cameraActive: false }));
+          } else {
+            setPlayerCamActive(false);
+          }
         } else {
           try {
             const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
             setWebcamStream(stream);
-            setStoryteller(s => ({ ...s, cameraActive: true }));
-            if (videoRef.current) videoRef.current.srcObject = stream;
+            if (isStorytellerMode) {
+              setStoryteller(s => ({ ...s, cameraActive: true }));
+              if (videoRef.current) videoRef.current.srcObject = stream;
+            } else {
+              setPlayerCamActive(true);
+              if (playerVideoRef.current) playerVideoRef.current.srcObject = stream;
+            }
           } catch (err) {
             console.warn("Accès webcam refusé:", err);
           }
@@ -422,12 +408,42 @@
       };
 
       useEffect(() => {
-        if (videoRef.current && webcamStream) {
+        if (isStorytellerMode && videoRef.current && webcamStream) {
           videoRef.current.srcObject = webcamStream;
         }
-      }, [webcamStream]);
+        if (!isStorytellerMode && playerVideoRef.current && webcamStream) {
+          playerVideoRef.current.srcObject = webcamStream;
+        }
+      }, [webcamStream, isStorytellerMode, playerCamActive]);
 
-      // --- SYNCHRONISATION MULTIJOUEUR EN TEMPS RÉEL (FIREBASE + LOCAL POLLING) ---
+      // --- SYNCHRONISATION MULTIJOUEUR EN TEMPS RÉEL (FIREBASE + BROADCAST CHANNEL) ---
+      const lastRemoteTimestampRef = useRef(0);
+      const broadcastChannelRef = useRef(null);
+
+      useEffect(() => {
+        if (!roomCode) return;
+        try {
+          broadcastChannelRef.current = new BroadcastChannel(`botc_${roomCode}`);
+          broadcastChannelRef.current.onmessage = (event) => {
+            const data = event.data;
+            if (!data) return;
+            if (data.players) {
+              const clean = sanitizePlayerList(data.players);
+              playersRef.current = clean;
+              setPlayers(clean);
+            }
+            if (data.phase) setPhase(data.phase);
+            if (data.dayNumber !== undefined) setDayNumber(data.dayNumber);
+            if (data.gameStarted !== undefined) setGameStarted(data.gameStarted);
+            if (data.nomination) setNomination(data.nomination);
+          };
+        } catch (e) {}
+
+        return () => {
+          if (broadcastChannelRef.current) broadcastChannelRef.current.close();
+        };
+      }, [roomCode]);
+
       useEffect(() => {
         if (!roomCode || inLobbyScreen) return;
 
@@ -437,69 +453,40 @@
           try {
             const data = await firebaseSync.getRoom(roomCode);
             if (data && !isCancelled) {
-              if (data.players !== undefined) {
-                const incomingPlayers = sanitizePlayerList(data.players);
-                setPlayers(prev => {
-                  // Détecte les nouveaux joueurs arrivés (ex: joueur ayant rejoint avec le code)
-                  if (incomingPlayers.length !== prev.length || JSON.stringify(incomingPlayers.map(p => p.id)) !== JSON.stringify(prev.map(p => p.id))) {
-                    return incomingPlayers;
+              const remoteTimestamp = data.lastUpdated || 0;
+              
+              if (data.players) {
+                const cleanRemote = sanitizePlayerList(data.players);
+                if (isStorytellerMode) {
+                  // Le Conteur met à jour son cercle si un nouveau joueur arrive ou si la liste distante est plus récente
+                  if (cleanRemote.length > playersRef.current.length || remoteTimestamp > lastRemoteTimestampRef.current) {
+                    playersRef.current = cleanRemote;
+                    setPlayers(cleanRemote);
+                    lastRemoteTimestampRef.current = remoteTimestamp;
                   }
-                  // Si même nombre, met à jour les données (votes, vie/mort, salons) sans écraser les références
-                  if (JSON.stringify(incomingPlayers) !== JSON.stringify(prev)) {
-                    return incomingPlayers;
-                  }
-                  return prev;
-                });
-              }
-              if (data.phase) setPhase(data.phase);
-              if (data.dayNumber !== undefined) setDayNumber(Number(data.dayNumber) || 1);
-              if (data.gameStarted !== undefined) setGameStarted(Boolean(data.gameStarted));
-              if (data.nomination) setNomination(data.nomination);
-              if (data.storyteller) {
-                setStoryteller(prev => ({
-                  ...prev,
-                  ...data.storyteller,
-                  name: data.storyteller.name || prev.name,
-                  avatar: data.storyteller.avatar || prev.avatar,
-                  currentRoom: data.storyteller.currentRoom || prev.currentRoom || 'square'
-                }));
-              }
-              if (data.selectedScriptId && SCRIPTS_DATA[data.selectedScriptId]) {
-                setSelectedScriptId(data.selectedScriptId);
-              }
-              if (data.demonBluffs && Array.isArray(data.demonBluffs)) {
-                setDemonBluffs(data.demonBluffs);
-              }
-              if (data.onTheBlock !== undefined) setOnTheBlock(data.onTheBlock);
-              if (data.dayTimerSeconds !== undefined && !isStorytellerMode) setDayTimerSeconds(Number(data.dayTimerSeconds) || 300);
-              if (data.isTimerRunning !== undefined && !isStorytellerMode) setIsTimerRunning(Boolean(data.isTimerRunning));
-            }
-          } catch (e) {}
-
-          // Fallback stockage local / inter-onglets
-          try {
-            const localRaw = localStorage.getItem(`botc_room_${roomCode}`);
-            if (localRaw) {
-              const localData = JSON.parse(localRaw);
-              if (localData && !isCancelled) {
-                if (localData.players !== undefined) {
-                  const incomingLocal = sanitizePlayerList(localData.players);
-                  setPlayers(prev => {
-                    if (incomingLocal.length !== prev.length || JSON.stringify(incomingLocal.map(p => p.id)) !== JSON.stringify(prev.map(p => p.id))) {
-                      return incomingLocal;
-                    }
-                    return prev;
-                  });
+                } else {
+                  // Le joueur reçoit l'état du serveur
+                  playersRef.current = cleanRemote;
+                  setPlayers(cleanRemote);
+                  lastRemoteTimestampRef.current = remoteTimestamp;
                 }
-                if (localData.phase) setPhase(localData.phase);
-                if (localData.gameStarted !== undefined) setGameStarted(Boolean(localData.gameStarted));
-                if (localData.nomination) setNomination(localData.nomination);
               }
+
+              if (data.phase && !isStorytellerMode) setPhase(data.phase);
+              if (data.dayNumber !== undefined && !isStorytellerMode) setDayNumber(data.dayNumber);
+              if (data.gameStarted !== undefined && !isStorytellerMode) setGameStarted(data.gameStarted);
+              if (data.nomination && !isStorytellerMode) setNomination(data.nomination);
+              if (data.storyteller) setStoryteller(data.storyteller);
+              if (data.selectedScriptId && !isStorytellerMode) setSelectedScriptId(data.selectedScriptId);
+              if (data.demonBluffs && isStorytellerMode) setDemonBluffs(data.demonBluffs);
+              if (data.onTheBlock !== undefined && !isStorytellerMode) setOnTheBlock(data.onTheBlock);
+              if (data.dayTimerSeconds !== undefined && !isStorytellerMode) setDayTimerSeconds(data.dayTimerSeconds);
+              if (data.isTimerRunning !== undefined && !isStorytellerMode) setIsTimerRunning(data.isTimerRunning);
             }
           } catch (e) {}
         };
 
-        const interval = setInterval(pollGameState, 1000);
+        const interval = setInterval(pollGameState, 800);
         pollGameState();
 
         return () => {
@@ -509,12 +496,14 @@
       }, [roomCode, inLobbyScreen, isStorytellerMode]);
 
       const broadcastGameState = (
-        newPlayers = players, 
+        newPlayers = playersRef.current, 
         newPhase = phase, 
         newStarted = gameStarted,
         extraUpdates = {}
       ) => {
         if (!roomCode) return;
+        const now = Date.now();
+        lastRemoteTimestampRef.current = now;
         const payload = {
           roomCode,
           players: newPlayers,
@@ -528,20 +517,22 @@
           onTheBlock,
           dayTimerSeconds,
           isTimerRunning,
-          lastUpdated: Date.now(),
+          lastUpdated: now,
           ...extraUpdates
         };
 
-        // 1. Envoi direct vers Firebase
-        firebaseSync.setRoom(roomCode, payload);
+        // Broadcast local instantané
+        if (broadcastChannelRef.current) {
+          try {
+            broadcastChannelRef.current.postMessage(payload);
+          } catch (e) {}
+        }
 
-        // 2. Synchronisation instantanée locale
-        try {
-          localStorage.setItem(`botc_room_${roomCode}`, JSON.stringify(payload));
-        } catch (e) {}
+        // Firebase Realtime
+        firebaseSync.setRoom(roomCode, payload);
       };
 
-      // --- QUOTAS OFFICIELS & BARON ---
+      // --- QUOTAS & MODIFICATEURS ---
       const currentScript = SCRIPTS_DATA[selectedScriptId] || SCRIPTS_DATA.tb;
       const officialQuota = PLAYER_DISTRIBUTION[players.length] || null;
 
@@ -564,7 +555,7 @@
       const assignedCounts = useMemo(() => {
         const counts = { townsfolk: 0, outsider: 0, minion: 0, demon: 0 };
         players.forEach(p => {
-          if (p && p.role && ROLES_DB[p.role]) {
+          if (p.role && ROLES_DB[p.role]) {
             const team = ROLES_DB[p.role].team;
             if (counts[team] !== undefined) counts[team]++;
           }
@@ -588,20 +579,18 @@
           inRoom: 'square',
           micActive: true
         };
-        setPlayers(prev => {
-          const updated = [...prev, newPlayer];
-          broadcastGameState(updated);
-          return updated;
-        });
+        const updated = [...playersRef.current, newPlayer];
+        playersRef.current = updated;
+        setPlayers(updated);
+        broadcastGameState(updated);
       };
 
       const removePlayerSeat = (playerId) => {
         if (gameStarted) return;
-        setPlayers(prev => {
-          const updated = prev.filter(p => p.id !== playerId);
-          broadcastGameState(updated);
-          return updated;
-        });
+        const updated = playersRef.current.filter(p => p.id !== playerId);
+        playersRef.current = updated;
+        setPlayers(updated);
+        broadcastGameState(updated);
       };
 
       const handleAutoDistributeRoles = () => {
@@ -638,12 +627,10 @@
           ...chosenTownsfolk
         ].filter(Boolean).sort(() => 0.5 - Math.random());
 
-        setPlayers(curr => {
-          const updated = curr.map((p, idx) => ({ ...p, role: fullPool[idx]?.id || null }));
-          broadcastGameState(updated);
-          return updated;
-        });
-
+        const updated = playersRef.current.map((p, idx) => ({ ...p, role: fullPool[idx]?.id || null }));
+        playersRef.current = updated;
+        setPlayers(updated);
+        broadcastGameState(updated);
         playSound('bell');
       };
 
@@ -660,17 +647,16 @@
           shuffled[2]?.id || null
         ];
         setDemonBluffs(newBluffs);
-        broadcastGameState(players, phase, gameStarted, { demonBluffs: newBluffs });
+        broadcastGameState(playersRef.current, phase, gameStarted, { demonBluffs: newBluffs });
         playSound('bell');
       };
 
       const shufflePlayerSeats = () => {
         if (players.length < 2) return;
-        setPlayers(prev => {
-          const updated = [...prev].sort(() => 0.5 - Math.random());
-          broadcastGameState(updated);
-          return updated;
-        });
+        const updated = [...playersRef.current].sort(() => 0.5 - Math.random());
+        playersRef.current = updated;
+        setPlayers(updated);
+        broadcastGameState(updated);
         playSound('bell');
       };
 
@@ -699,10 +685,11 @@
         setStoryteller(updatedSt);
 
         const updatedPlayers = [
-          ...players.filter(p => p.id !== newStorytellerPlayer.id),
+          ...playersRef.current.filter(p => p.id !== newStorytellerPlayer.id),
           demotedStorytellerPlayer
         ];
 
+        playersRef.current = updatedPlayers;
         setPlayers(updatedPlayers);
         setSwitchStorytellerModalOpen(false);
         broadcastGameState(updatedPlayers, phase, gameStarted, { storyteller: updatedSt });
@@ -724,7 +711,7 @@
         setDayTimerSeconds(300);
         setIsTimerRunning(false);
 
-        const updated = players.map(p => ({
+        const updated = playersRef.current.map(p => ({
           ...p,
           role: null,
           hypothesisRole: null,
@@ -734,6 +721,7 @@
           inRoom: 'square'
         }));
 
+        playersRef.current = updated;
         setPlayers(updated);
         broadcastGameState(updated, 'day', false);
         playSound('bell');
@@ -750,11 +738,11 @@
         setGameStarted(true);
         setPhase('night');
         setDayNumber(1);
-        broadcastGameState(players, 'night', true);
+        broadcastGameState(playersRef.current, 'night', true);
         playSound('bell');
       };
 
-      // --- VOTE & DOUBLE AIGUILLE DEPUIS L'ACCUSÉ ---
+      // --- VOTE & DOUBLE AIGUILLE ---
       const nomineeIndex = useMemo(() => {
         if (!nomination.active || !nomination.nomineeId || players.length === 0) return -1;
         return players.findIndex(p => p.id === nomination.nomineeId);
@@ -793,16 +781,15 @@
               }
 
               // Consommation du vote fantôme
-              setPlayers(curr => {
-                const updated = curr.map(p => {
-                  if (!p.alive && prev.votes && prev.votes[p.id]) {
-                    return { ...p, ghostVote: false };
-                  }
-                  return p;
-                });
-                broadcastGameState(updated);
-                return updated;
+              const updated = playersRef.current.map(p => {
+                if (!p.alive && prev.votes[p.id]) {
+                  return { ...p, ghostVote: false };
+                }
+                return p;
               });
+              playersRef.current = updated;
+              setPlayers(updated);
+              broadcastGameState(updated);
 
               return { ...prev, isRunning: false, clockIndex: orderedVoters.length - 1 };
             }
@@ -816,7 +803,7 @@
       const handleApproveAccusation = () => {
         if (!pendingAccusation) return;
         playSound('bell');
-        const newNomination = {
+        const newNom = {
           active: true,
           nominatorId: pendingAccusation.nominatorId,
           nomineeId: pendingAccusation.nomineeId,
@@ -825,29 +812,28 @@
           votes: {},
           speed: 1600
         };
-        setNomination(newNomination);
+        setNomination(newNom);
         setPendingAccusation(null);
-        broadcastGameState(players, phase, gameStarted, { nomination: newNomination });
+        broadcastGameState(playersRef.current, phase, gameStarted, { nomination: newNom });
       };
 
       const togglePlayerLife = (playerId) => {
-        setPlayers(prev => {
-          const updated = prev.map(p => p.id === playerId ? { ...p, alive: !p.alive } : p);
-          broadcastGameState(updated);
-          return updated;
-        });
+        const updated = playersRef.current.map(p => p.id === playerId ? { ...p, alive: !p.alive } : p);
+        playersRef.current = updated;
+        setPlayers(updated);
+        broadcastGameState(updated);
       };
 
       const executePlayerOnBlock = () => {
         if (!onTheBlock) return;
         playSound('gavel');
-        setPlayers(prev => {
-          const updated = prev.map(p => p.id === onTheBlock.playerId ? { ...p, alive: false } : p);
-          broadcastGameState(updated, phase, gameStarted, { onTheBlock: null });
-          return updated;
-        });
+        const updated = playersRef.current.map(p => p.id === onTheBlock.playerId ? { ...p, alive: false } : p);
+        playersRef.current = updated;
+        setPlayers(updated);
         setOnTheBlock(null);
-        setNomination(prev => ({ ...prev, active: false, isRunning: false }));
+        const newNom = { ...nomination, active: false, isRunning: false };
+        setNomination(newNom);
+        broadcastGameState(updated, phase, gameStarted, { onTheBlock: null, nomination: newNom });
       };
 
       const sendRoomInvite = (targetPlayer, explicitRoomId = null, explicitRoomName = null) => {
@@ -874,23 +860,15 @@
 
       const changeUserRoom = (roomId) => {
         setCurrentDayRoom(roomId);
-        if (!isStorytellerMode && players.length > 0) {
-          setPlayers(prev => {
-            const updated = prev.map(p => {
-              if (currentUserId && p.id === currentUserId) {
-                return { ...p, inRoom: roomId };
-              }
-              return p;
-            });
-            broadcastGameState(updated);
-            return updated;
-          });
+        if (!isStorytellerMode && currentUserId) {
+          const updated = playersRef.current.map(p => p.id === currentUserId ? { ...p, inRoom: roomId } : p);
+          playersRef.current = updated;
+          setPlayers(updated);
+          broadcastGameState(updated);
         } else {
-          setStoryteller(s => {
-            const updatedSt = { ...s, currentRoom: roomId };
-            broadcastGameState(players, phase, gameStarted, { storyteller: updatedSt });
-            return updatedSt;
-          });
+          const updatedSt = { ...storyteller, currentRoom: roomId };
+          setStoryteller(updatedSt);
+          broadcastGameState(playersRef.current, phase, gameStarted, { storyteller: updatedSt });
         }
       };
 
@@ -1061,15 +1039,16 @@
                         dayNumber: 1,
                         gameStarted: false,
                         demonBluffs: [null, null, null],
-                        createdAt: Date.now()
+                        createdAt: Date.now(),
+                        lastUpdated: Date.now()
                       };
 
                       await firebaseSync.setRoom(newCode, newRoomData);
-                      localStorage.setItem(`botc_room_${newCode}`, JSON.stringify(newRoomData));
 
                       setRoomCode(newCode);
                       setStoryteller(initialStoryteller);
                       setIsStorytellerMode(true);
+                      playersRef.current = [];
                       setPlayers([]);
                       setInLobbyScreen(false);
                       setIsConnecting(false);
@@ -1082,14 +1061,7 @@
                         return;
                       }
 
-                      // Vérification de l'existence du vrai salon en ligne
                       let existingRoom = await firebaseSync.getRoom(codeToJoin);
-                      if (!existingRoom) {
-                        try {
-                          const localCheck = localStorage.getItem(`botc_room_${codeToJoin}`);
-                          if (localCheck) existingRoom = JSON.parse(localCheck);
-                        } catch (e) {}
-                      }
 
                       if (!existingRoom) {
                         setJoinError(`Le salon « ${codeToJoin} » n'existe pas. Vérifiez le code avec le Conteur.`);
@@ -1097,10 +1069,9 @@
                         return;
                       }
 
-                      const currentList = sanitizePlayerList(existingRoom.players);
                       const myId = Date.now() + Math.random();
-                      const nextAvatar = BOT_AVATARS[currentList.length % BOT_AVATARS.length];
-                      const newJoinedPlayer = sanitizePlayer({
+                      const nextAvatar = BOT_AVATARS[(existingRoom.players?.length || 0) % BOT_AVATARS.length];
+                      const newJoinedPlayer = {
                         id: myId,
                         name: finalPseudo,
                         avatar: nextAvatar,
@@ -1111,17 +1082,30 @@
                         reminders: [],
                         inRoom: 'square',
                         micActive: true
-                      }, currentList.length);
+                      };
 
+                      const currentList = sanitizePlayerList(existingRoom.players || []);
                       const updatedPlayers = [...currentList, newJoinedPlayer];
-                      await firebaseSync.updateRoom(codeToJoin, { players: updatedPlayers });
+                      
+                      const joinPayload = {
+                        players: updatedPlayers,
+                        lastUpdated: Date.now()
+                      };
+
+                      await firebaseSync.updateRoom(codeToJoin, joinPayload);
+
+                      // Alerte locale par BroadcastChannel
+                      try {
+                        const bc = new BroadcastChannel(`botc_${codeToJoin}`);
+                        bc.postMessage(joinPayload);
+                        bc.close();
+                      } catch (e) {}
 
                       setRoomCode(codeToJoin);
                       setCurrentUserId(myId);
-                      if (existingRoom.storyteller) {
-                        setStoryteller(prev => ({ ...prev, ...existingRoom.storyteller }));
-                      }
+                      setStoryteller(existingRoom.storyteller || storyteller);
                       setSelectedScriptId(existingRoom.selectedScriptId || 'tb');
+                      playersRef.current = updatedPlayers;
                       setPlayers(updatedPlayers);
                       setPhase(existingRoom.phase || 'day');
                       setDayNumber(existingRoom.dayNumber || 1);
@@ -1219,11 +1203,15 @@
 
               <div className="h-4 w-px bg-stone-800 hidden sm:block" />
 
-              {!gameStarted ? (
+              {/* Sélecteur de script modifiable par l'Hôte uniquement avant le lancement */}
+              {isStorytellerMode && !gameStarted ? (
                 <div className="flex items-center gap-1">
                   <select
                     value={selectedScriptId}
-                    onChange={(e) => setSelectedScriptId(e.target.value)}
+                    onChange={(e) => {
+                      setSelectedScriptId(e.target.value);
+                      broadcastGameState(playersRef.current, phase, gameStarted, { selectedScriptId: e.target.value });
+                    }}
                     className="px-2 py-1 rounded-lg bg-stone-900 border border-amber-600/50 text-xs text-amber-300 font-serif font-bold focus:outline-none"
                   >
                     <optgroup label="Scripts Officiels">
@@ -1264,20 +1252,32 @@
                   {isStorytellerMode && (
                     <div className="flex items-center gap-1 ml-1.5 border-l border-stone-700 pl-1.5">
                       <button
-                        onClick={() => setIsTimerRunning(!isTimerRunning)}
+                        onClick={() => {
+                          const nextRunning = !isTimerRunning;
+                          setIsTimerRunning(nextRunning);
+                          broadcastGameState(playersRef.current, phase, gameStarted, { isTimerRunning: nextRunning, dayTimerSeconds });
+                        }}
                         className="hover:text-amber-400 text-stone-300"
                         title={isTimerRunning ? 'Pause' : 'Démarrer le chrono'}
                       >
                         <Icon name={isTimerRunning ? "Pause" : "Play"} className="w-3 h-3" />
                       </button>
                       <button
-                        onClick={() => setDayTimerSeconds(s => s + 60)}
+                        onClick={() => {
+                          const nextSec = dayTimerSeconds + 60;
+                          setDayTimerSeconds(nextSec);
+                          broadcastGameState(playersRef.current, phase, gameStarted, { dayTimerSeconds: nextSec });
+                        }}
                         className="hover:text-amber-400 text-stone-300 text-[10px] font-mono px-0.5"
                       >
                         +1m
                       </button>
                       <button
-                        onClick={() => { setIsTimerRunning(false); setDayTimerSeconds(300); }}
+                        onClick={() => {
+                          setIsTimerRunning(false);
+                          setDayTimerSeconds(300);
+                          broadcastGameState(playersRef.current, phase, gameStarted, { isTimerRunning: false, dayTimerSeconds: 300 });
+                        }}
                         className="hover:text-amber-400 text-stone-300"
                       >
                         <Icon name="RotateCcw" className="w-3 h-3" />
@@ -1313,8 +1313,22 @@
               )}
             </div>
 
-            {/* COMMANDES MJ / JOUEUR, MICRO & PARAMÈTRES */}
+            {/* COMMANDES CONTEUR / JOUEUR */}
             <div className="flex items-center gap-2">
+              {!isStorytellerMode && (
+                <button
+                  onClick={toggleUserWebcam}
+                  className={`p-1.5 rounded-lg border text-xs transition ${
+                    playerCamActive
+                      ? 'bg-emerald-950/80 border-emerald-500 text-emerald-300'
+                      : 'bg-stone-900 border-stone-700 text-stone-400 hover:text-stone-200'
+                  }`}
+                  title={playerCamActive ? "Couper ma caméra" : "Activer ma caméra"}
+                >
+                  <Icon name={playerCamActive ? "Video" : "VideoOff"} className="w-3.5 h-3.5" />
+                </button>
+              )}
+
               <button
                 onClick={() => setIsMicMuted(!isMicMuted)}
                 className={`p-1.5 rounded-lg border text-xs transition ${
@@ -1327,33 +1341,27 @@
                 <Icon name={isMicMuted ? "MicOff" : "Mic"} className="w-3.5 h-3.5" />
               </button>
 
-              <button
-                onClick={() => setIsStorytellerMode(prev => !prev)}
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition flex items-center gap-1.5 ${
-                  isStorytellerMode
-                    ? 'bg-amber-950/80 border-amber-500 text-amber-200'
-                    : 'bg-stone-800 border-stone-600 text-stone-300'
-                }`}
-              >
-                <Icon name="Crown" className="w-3.5 h-3.5 text-amber-400" />
-                <span className="hidden sm:inline">{isStorytellerMode ? 'MJ' : 'Joueur'}</span>
-              </button>
+              {/* Bouton d'ordre de nuit réservé au Conteur */}
+              {isStorytellerMode && (
+                <button
+                  onClick={() => setNightOrderModalOpen(true)}
+                  className="px-2 py-1 rounded-lg bg-stone-900 border border-stone-700 text-xs text-indigo-300 hover:text-indigo-200"
+                  title="Ordre de Nuit"
+                >
+                  <Icon name="Clock" className="w-3.5 h-3.5" />
+                </button>
+              )}
 
-              <button
-                onClick={() => setNightOrderModalOpen(true)}
-                className="px-2 py-1 rounded-lg bg-stone-900 border border-stone-700 text-xs text-indigo-300 hover:text-indigo-200"
-              >
-                <Icon name="Clock" className="w-3.5 h-3.5" />
-              </button>
-
+              {/* Changement de Phase réservé au Conteur */}
               {isStorytellerMode && gameStarted && (
                 <button
                   onClick={() => {
                     playSound('bell');
                     const nextPhase = phase === 'day' ? 'night' : 'day';
+                    const nextDay = phase === 'night' ? dayNumber + 1 : dayNumber;
                     setPhase(nextPhase);
-                    if (phase === 'night') setDayNumber(d => d + 1);
-                    broadcastGameState(players, nextPhase, gameStarted);
+                    if (phase === 'night') setDayNumber(nextDay);
+                    broadcastGameState(playersRef.current, nextPhase, gameStarted, { dayNumber: nextDay });
                   }}
                   className="px-2 py-1 rounded-lg bg-stone-900 border border-stone-700 text-xs text-amber-300 flex items-center gap-1"
                 >
@@ -1390,7 +1398,10 @@
                     <Icon name="Check" className="w-3.5 h-3.5" /> Valider & Lancer le vote
                   </button>
                   <button
-                    onClick={() => setPendingAccusation(null)}
+                    onClick={() => {
+                      setPendingAccusation(null);
+                      broadcastGameState(playersRef.current, phase, gameStarted, { pendingAccusation: null });
+                    }}
                     className="px-3 py-1 bg-red-800 hover:bg-red-700 text-white rounded font-bold text-xs flex items-center gap-1"
                   >
                     <Icon name="X" className="w-3.5 h-3.5" /> Rejeter
@@ -1492,89 +1503,88 @@
             </button>
           </div>
 
-          {/* ZONE CENTRALE DU CERCLE */}
-          <div className="flex-1 flex overflow-hidden relative">
+          {/* ZONE CENTRALE DU CERCLE AVEC OVERFLOW SÉCURISÉ */}
+          <div className="flex-1 flex overflow-y-auto overflow-x-hidden relative min-h-0">
             
             {/* CONTEUR EN HAUT À GAUCHE */}
-            <div className="absolute top-4 left-4 z-30 flex flex-col items-start gap-1">
-              <div className="relative w-24 h-24 sm:w-28 sm:h-28 rounded-2xl overflow-hidden border-2 border-amber-500/80 bg-stone-950 shadow-2xl group">
+            <div className="absolute top-2 left-2 sm:top-4 sm:left-4 z-30 flex flex-col items-start gap-1">
+              <div className="relative w-20 h-20 sm:w-24 sm:h-24 md:w-28 md:h-28 rounded-2xl overflow-hidden border-2 border-amber-500/80 bg-stone-950 shadow-2xl group">
                 {storyteller.cameraActive ? (
                   <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
                 ) : (
-                  <div className="w-full h-full flex flex-col items-center justify-center bg-stone-900 text-4xl">
+                  <div className="w-full h-full flex flex-col items-center justify-center bg-stone-900 text-3xl sm:text-4xl">
                     <span>{storyteller.avatar}</span>
                   </div>
                 )}
 
-                <div className="absolute bottom-1 right-1 w-6 h-6 rounded-full bg-amber-500 text-stone-950 flex items-center justify-center font-bold shadow text-xs">
+                <div className="absolute bottom-1 right-1 w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-amber-500 text-stone-950 flex items-center justify-center font-bold shadow text-[10px] sm:text-xs">
                   🦋
                 </div>
 
-                <div className="absolute top-1 right-1 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition">
-                  <button
-                    onClick={toggleUserWebcam}
-                    className={`p-1 rounded-md text-[10px] ${storyteller.cameraActive ? 'bg-emerald-600 text-white' : 'bg-black/70 text-stone-300'}`}
-                  >
-                    <Icon name={storyteller.cameraActive ? "Video" : "VideoOff"} className="w-3 h-3" />
-                  </button>
-                </div>
+                {isStorytellerMode && (
+                  <div className="absolute top-1 right-1 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition">
+                    <button
+                      onClick={toggleUserWebcam}
+                      className={`p-1 rounded-md text-[10px] ${storyteller.cameraActive ? 'bg-emerald-600 text-white' : 'bg-black/70 text-stone-300'}`}
+                    >
+                      <Icon name={storyteller.cameraActive ? "Video" : "VideoOff"} className="w-3 h-3" />
+                    </button>
+                  </div>
+                )}
               </div>
 
-              <div className="px-2.5 py-1 rounded-lg bg-black/80 border border-stone-800 text-center shadow">
-                <div className="text-[11px] font-bold text-amber-300 flex items-center gap-1">
+              <div className="px-2 py-0.5 rounded-lg bg-black/80 border border-stone-800 text-center shadow">
+                <div className="text-[10px] sm:text-[11px] font-bold text-amber-300 flex items-center gap-1">
                   <span>{storyteller.name}</span>
                 </div>
               </div>
             </div>
 
-            {/* 3 JETONS DE BLUFF DU DÉMON EN BAS À GAUCHE */}
-            <div className="absolute bottom-4 left-4 z-30 flex flex-col gap-1">
-              <div className="flex items-center justify-between text-[10px] uppercase font-bold tracking-wider text-rose-400 gap-2">
-                <span className="flex items-center gap-1">
-                  <Icon name="Flame" className="w-3 h-3 text-rose-500" />
-                  Bluffs du Démon :
-                </span>
-
-                {isStorytellerMode && (
+            {/* BLUFFS DÉMON (CONTEUR SEULEMENT) */}
+            {isStorytellerMode && (
+              <div className="absolute bottom-2 left-2 sm:bottom-4 sm:left-4 z-30 flex flex-col gap-1">
+                <div className="flex items-center justify-between text-[10px] uppercase font-bold tracking-wider text-rose-400 gap-2">
+                  <span className="flex items-center gap-1">
+                    <Icon name="Flame" className="w-3 h-3 text-rose-500" />
+                    Bluffs Démon :
+                  </span>
                   <button
                     onClick={handleRandomizeDemonBluffs}
                     className="text-[9px] text-amber-300 hover:text-amber-200 underline font-semibold"
                   >
-                    Tirage aléatoire
+                    Tirage
                   </button>
-                )}
-              </div>
+                </div>
 
-              <div className="flex items-center gap-2 bg-stone-950/90 border border-rose-900/60 p-2 rounded-2xl shadow-xl backdrop-blur-md">
-                {demonBluffs.map((roleId, bIdx) => {
-                  const roleObj = roleId ? ROLES_DB[roleId] : null;
-                  return (
-                    <div
-                      key={bIdx}
-                      onClick={() => {
-                        if (isStorytellerMode) setDemonBluffPickerIndex(bIdx);
-                      }}
-                      className={`w-12 h-12 rounded-full border-2 border-dashed border-rose-600/80 bg-stone-900 flex items-center justify-center relative cursor-pointer hover:scale-105 transition shadow-lg ${
-                        roleObj ? 'border-solid border-rose-500' : ''
-                      } ${isStorytellerMode ? 'hover:border-amber-400' : ''}`}
-                    >
-                      {roleObj ? (
-                        <img src={roleObj.cdnIcon} alt={roleObj.name} className="w-8 h-8 object-contain drop-shadow" onError={(e) => { e.target.style.display = 'none'; }} />
-                      ) : (
-                        <span className="text-stone-500 text-xs font-bold font-mono">—</span>
-                      )}
-                      <span className="absolute -bottom-1 -right-1 w-4 h-4 bg-rose-950 border border-rose-500 text-rose-200 rounded-full text-[9px] font-bold flex items-center justify-center">
-                        {bIdx + 1}
-                      </span>
-                    </div>
-                  );
-                })}
+                <div className="flex items-center gap-1.5 bg-stone-950/90 border border-rose-900/60 p-1.5 sm:p-2 rounded-2xl shadow-xl backdrop-blur-md">
+                  {demonBluffs.map((roleId, bIdx) => {
+                    const roleObj = roleId ? ROLES_DB[roleId] : null;
+                    return (
+                      <div
+                        key={bIdx}
+                        onClick={() => setDemonBluffPickerIndex(bIdx)}
+                        className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full border-2 border-dashed border-rose-600/80 bg-stone-900 flex items-center justify-center relative cursor-pointer hover:scale-105 transition shadow-lg ${
+                          roleObj ? 'border-solid border-rose-500' : ''
+                        }`}
+                      >
+                        {roleObj ? (
+                          <img src={roleObj.cdnIcon} alt={roleObj.name} className="w-6 h-6 sm:w-8 sm:h-8 object-contain drop-shadow" onError={(e) => { e.target.style.display = 'none'; }} />
+                        ) : (
+                          <span className="text-stone-500 text-xs font-bold font-mono">—</span>
+                        )}
+                        <span className="absolute -bottom-1 -right-1 w-4 h-4 bg-rose-950 border border-rose-500 text-rose-200 rounded-full text-[9px] font-bold flex items-center justify-center">
+                          {bIdx + 1}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
+            )}
 
-            {/* COMMANDES DE L'HÔTE */}
+            {/* COMMANDES DE L'HÔTE (AVANT LANCEMENT) */}
             {isStorytellerMode && !gameStarted && (
-              <div className="absolute bottom-4 left-48 z-30 flex flex-wrap items-center gap-2 bg-stone-950/90 border border-stone-800 p-2 rounded-2xl backdrop-blur-md shadow-2xl">
+              <div className="absolute bottom-4 left-44 z-30 flex flex-wrap items-center gap-2 bg-stone-950/90 border border-stone-800 p-2 rounded-2xl backdrop-blur-md shadow-2xl">
                 <button
                   onClick={() => addPlayerSeat()}
                   className="px-2.5 py-1.5 rounded-xl bg-indigo-900 hover:bg-indigo-800 border border-indigo-600 text-xs font-bold text-indigo-100 flex items-center gap-1.5"
@@ -1611,7 +1621,11 @@
 
                 {players.length > 0 && (
                   <button
-                    onClick={() => { setPlayers([]); broadcastGameState([]); }}
+                    onClick={() => {
+                      playersRef.current = [];
+                      setPlayers([]);
+                      broadcastGameState([]);
+                    }}
                     className="p-1.5 rounded-xl bg-stone-900 hover:bg-red-950 text-stone-400 hover:text-red-400 border border-stone-800"
                   >
                     <Icon name="Trash2" className="w-3.5 h-3.5" />
@@ -1620,7 +1634,7 @@
               </div>
             )}
 
-            {/* BOUTON ACCUSATION */}
+            {/* BOUTON ACCUSATION LE JOUR */}
             {gameStarted && phase === 'day' && !nomination.active && (
               <div className="absolute bottom-4 right-4 z-30">
                 <button
@@ -1633,13 +1647,13 @@
             )}
 
             {/* CERCLE DU VILLAGE */}
-            <main className="flex-1 flex items-center justify-center relative p-4">
+            <main className="flex-1 flex items-center justify-center relative p-6 sm:p-10 my-auto">
               {players.length === 0 ? (
-                <div className="text-center p-8 rounded-3xl bg-black/70 border border-purple-900/40 backdrop-blur-md z-20 max-w-md shadow-2xl">
-                  <div className="w-16 h-16 rounded-full bg-purple-950/80 border border-purple-500/50 flex items-center justify-center text-3xl mx-auto mb-3 shadow-lg">
+                <div className="text-center p-6 sm:p-8 rounded-3xl bg-black/70 border border-purple-900/40 backdrop-blur-md z-20 max-w-md shadow-2xl">
+                  <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-purple-950/80 border border-purple-500/50 flex items-center justify-center text-3xl mx-auto mb-3 shadow-lg">
                     🕯️
                   </div>
-                  <h2 className="font-serif font-bold text-xl text-amber-200 mb-1">Ravenswood Bluff est désert</h2>
+                  <h2 className="font-serif font-bold text-lg sm:text-xl text-amber-200 mb-1">Ravenswood Bluff est désert</h2>
                   <p className="text-xs text-stone-400 mb-4 leading-relaxed">
                     Le cercle est vide. Invitez vos amis avec le code <strong className="text-amber-300 font-mono">{roomCode}</strong> ou ajoutez des joueurs.
                   </p>
@@ -1653,38 +1667,38 @@
                   )}
                 </div>
               ) : (
-                <div className="relative w-[340px] h-[340px] sm:w-[500px] sm:h-[500px] lg:w-[620px] lg:h-[620px] rounded-full flex items-center justify-center">
+                <div className="relative w-[320px] h-[320px] xs:w-[380px] xs:h-[380px] sm:w-[480px] sm:h-[480px] md:w-[560px] md:h-[560px] lg:w-[620px] lg:h-[620px] rounded-full flex items-center justify-center m-auto">
                   
-                  <div className="absolute inset-20 rounded-full border border-purple-900/30 pointer-events-none flex items-center justify-center opacity-30">
-                    <div className="text-8xl sm:text-9xl filter drop-shadow">😈</div>
+                  <div className="absolute inset-16 sm:inset-20 rounded-full border border-purple-900/30 pointer-events-none flex items-center justify-center opacity-30">
+                    <div className="text-7xl sm:text-9xl filter drop-shadow">😈</div>
                   </div>
 
                   {/* HORLOGE À DOUBLE AIGUILLE */}
                   {nomination.active && (
                     <>
                       <div
-                        className="absolute w-2 h-[48%] origin-bottom bottom-1/2 rounded-full pointer-events-none z-10 transition-transform duration-500 ease-out"
+                        className="absolute w-2 h-[46%] origin-bottom bottom-1/2 rounded-full pointer-events-none z-10 transition-transform duration-500 ease-out"
                         style={{
                           transform: `rotate(${nomineeAngle}deg)`,
                           background: 'linear-gradient(to top, rgba(220,38,38,1), #ef4444, #f87171)',
                           boxShadow: '0 0 35px 10px rgba(239,68,68,0.95)'
                         }}
                       >
-                        <div className="w-8 h-8 -ml-[11px] -mt-4 bg-red-600 border-2 border-white rounded-full flex items-center justify-center shadow-2xl text-xs font-bold text-white ring-2 ring-red-400">
+                        <div className="w-7 h-7 -ml-[10px] -mt-3.5 bg-red-600 border-2 border-white rounded-full flex items-center justify-center shadow-2xl text-[11px] font-bold text-white ring-2 ring-red-400">
                           🎯
                         </div>
                       </div>
 
                       {nomination.clockIndex >= 0 && (
                         <div
-                          className="absolute w-2.5 h-[50%] origin-bottom bottom-1/2 rounded-full pointer-events-none z-20 transition-transform duration-500 ease-out"
+                          className="absolute w-2.5 h-[48%] origin-bottom bottom-1/2 rounded-full pointer-events-none z-20 transition-transform duration-500 ease-out"
                           style={{
                             transform: `rotate(${sweeperAngle}deg)`,
                             background: 'linear-gradient(to top, rgba(217,119,6,1), #fbbf24, #fef08a)',
                             boxShadow: '0 0 40px 12px rgba(251,191,36,1)'
                           }}
                         >
-                          <div className="w-9 h-9 -ml-[13px] -mt-4.5 bg-amber-400 border-2 border-amber-950 rounded-full flex items-center justify-center shadow-2xl text-base font-bold text-amber-950 ring-2 ring-amber-300">
+                          <div className="w-8 h-8 -ml-[12px] -mt-4 bg-amber-400 border-2 border-amber-950 rounded-full flex items-center justify-center shadow-2xl text-sm font-bold text-amber-950 ring-2 ring-amber-300">
                             ✋
                           </div>
                         </div>
@@ -1693,17 +1707,17 @@
                   )}
 
                   {/* CENTRE DU CERCLE */}
-                  <div className="w-44 h-44 sm:w-56 sm:h-56 rounded-full bg-stone-950/95 border-2 border-amber-700/60 shadow-[0_0_60px_rgba(0,0,0,0.9)] flex flex-col items-center justify-center p-3 text-center z-20">
+                  <div className="w-40 h-40 xs:w-44 xs:h-44 sm:w-52 sm:h-52 md:w-56 md:h-56 rounded-full bg-stone-950/95 border-2 border-amber-700/60 shadow-[0_0_60px_rgba(0,0,0,0.9)] flex flex-col items-center justify-center p-3 text-center z-20">
                     {nomination.active ? (
                       <>
-                        <span className="text-[10px] uppercase font-bold tracking-widest text-amber-400">Vote en cours</span>
-                        <div className="text-xs text-stone-300 font-semibold mt-0.5 truncate max-w-[150px]">
+                        <span className="text-[9px] uppercase font-bold tracking-widest text-amber-400">Vote en cours</span>
+                        <div className="text-xs text-stone-300 font-semibold mt-0.5 truncate max-w-[140px]">
                           Accusé : <strong className="text-red-400">{players.find(p => p.id === nomination.nomineeId)?.name}</strong>
                         </div>
-                        <div className="text-2xl font-serif font-black text-amber-200 my-1">
+                        <div className="text-xl sm:text-2xl font-serif font-black text-amber-200 my-1">
                           ✋ {Object.values(nomination.votes || {}).filter(Boolean).length} / {majorityRequired}
                         </div>
-                        <div className="text-[10px] text-stone-400 mb-2 truncate max-w-[150px]">
+                        <div className="text-[10px] text-stone-400 mb-2 truncate max-w-[140px]">
                           {nomination.clockIndex === -1 ? (
                             <span className="text-amber-300 italic">Prêt à démarrer après l'accusé</span>
                           ) : (
@@ -1711,50 +1725,73 @@
                           )}
                         </div>
 
-                        <div className="flex items-center gap-1.5">
-                          {!nomination.isRunning ? (
+                        {isStorytellerMode && (
+                          <div className="flex items-center gap-1.5">
+                            {!nomination.isRunning ? (
+                              <button
+                                onClick={() => {
+                                  const newNom = {
+                                    ...nomination,
+                                    isRunning: true,
+                                    clockIndex: nomination.clockIndex === -1 ? 0 : nomination.clockIndex
+                                  };
+                                  setNomination(newNom);
+                                  broadcastGameState(playersRef.current, phase, gameStarted, { nomination: newNom });
+                                }}
+                                className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold rounded text-xs flex items-center gap-1 shadow"
+                              >
+                                <Icon name="Play" className="w-3 h-3 fill-stone-950" /> {nomination.clockIndex === -1 ? 'Lancer' : 'Reprendre'}
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => {
+                                  const newNom = { ...nomination, isRunning: false };
+                                  setNomination(newNom);
+                                  broadcastGameState(playersRef.current, phase, gameStarted, { nomination: newNom });
+                                }}
+                                className="px-2.5 py-1 bg-stone-700 hover:bg-stone-600 text-white font-bold rounded text-xs flex items-center gap-1"
+                              >
+                                <Icon name="Pause" className="w-3 h-3" /> Pause
+                              </button>
+                            )}
                             <button
-                              onClick={() => setNomination(p => ({
-                                ...p,
-                                isRunning: true,
-                                clockIndex: p.clockIndex === -1 ? 0 : p.clockIndex
-                              }))}
-                              className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold rounded text-xs flex items-center gap-1 shadow"
+                              onClick={() => {
+                                const newNom = { ...nomination, active: false, isRunning: false, clockIndex: -1 };
+                                setNomination(newNom);
+                                broadcastGameState(playersRef.current, phase, gameStarted, { nomination: newNom });
+                              }}
+                              className="p-1 bg-stone-800 hover:bg-red-900 rounded text-stone-300"
                             >
-                              <Icon name="Play" className="w-3 h-3 fill-stone-950" /> {nomination.clockIndex === -1 ? 'Lancer' : 'Reprendre'}
+                              <Icon name="X" className="w-3.5 h-3.5" />
                             </button>
-                          ) : (
-                            <button
-                              onClick={() => setNomination(p => ({ ...p, isRunning: false }))}
-                              className="px-2.5 py-1 bg-stone-700 hover:bg-stone-600 text-white font-bold rounded text-xs flex items-center gap-1"
-                            >
-                              <Icon name="Pause" className="w-3 h-3" /> Pause
-                            </button>
-                          )}
-                          <button
-                            onClick={() => setNomination(p => ({ ...p, active: false, isRunning: false, clockIndex: -1 }))}
-                            className="p-1 bg-stone-800 hover:bg-red-900 rounded text-stone-300"
-                          >
-                            <Icon name="X" className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
+                          </div>
+                        )}
                       </>
                     ) : (
                       <>
-                        <div className="w-10 h-10 rounded-full bg-purple-950/80 border border-purple-500/50 flex items-center justify-center text-xl mb-1 shadow-inner">
+                        <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-purple-950/80 border border-purple-500/50 flex items-center justify-center text-lg sm:text-xl mb-1 shadow-inner">
                           {phase === 'day' ? '☀️' : '🌙'}
                         </div>
-                        <span className="font-serif font-bold text-sm text-amber-200">
+                        <span className="font-serif font-bold text-xs sm:text-sm text-amber-200">
                           {gameStarted ? (phase === 'day' ? `Jour ${dayNumber}` : `Nuit ${dayNumber}`) : 'Salon d’attente'}
                         </span>
                         
-                        {dynamicQuota ? (
+                        {/* Répartition théorique ou dynamique */}
+                        {officialQuota ? (
                           <div className="mt-1 text-[9px] font-mono text-stone-400 flex flex-col items-center">
-                            <div>
-                              V:{assignedCounts.townsfolk}/{dynamicQuota.townsfolk} • E:{assignedCounts.outsider}/{dynamicQuota.outsider} • S:{assignedCounts.minion}/{dynamicQuota.minion} • D:{assignedCounts.demon}/{dynamicQuota.demon}
-                            </div>
-                            {dynamicQuota.hasBaron && (
-                              <span className="text-amber-400 text-[8px] mt-0.5">🎩 Baron (+2 Étrangers)</span>
+                            {isStorytellerMode && dynamicQuota ? (
+                              <>
+                                <div>
+                                  V:{assignedCounts.townsfolk}/{dynamicQuota.townsfolk} • E:{assignedCounts.outsider}/{dynamicQuota.outsider} • S:{assignedCounts.minion}/{dynamicQuota.minion} • D:{assignedCounts.demon}/{dynamicQuota.demon}
+                                </div>
+                                {dynamicQuota.hasBaron && (
+                                  <span className="text-amber-400 text-[8px] mt-0.5">🎩 Baron (+2 Étrangers)</span>
+                                )}
+                              </>
+                            ) : (
+                              <div className="text-stone-300 font-semibold bg-stone-900/90 px-2 py-0.5 rounded-lg border border-stone-800 mt-0.5">
+                                <span className="text-amber-400 font-bold">Théorie :</span> {officialQuota.townsfolk}V • {officialQuota.outsider}E • {officialQuota.minion}S • {officialQuota.demon}D
+                              </div>
                             )}
                           </div>
                         ) : (
@@ -1766,41 +1803,44 @@
                     )}
                   </div>
 
-                  {/* SIÈGES DES JOUEURS */}
+                  {/* SIÈGES DES JOUEURS DANS LE CERCLE */}
                   {players.map((p, index) => {
-                    if (!p) return null;
-                    const angle = (index / (players.length || 1)) * 2 * Math.PI - Math.PI / 2;
-                    const radiusPercent = 43;
+                    const angle = (index / players.length) * 2 * Math.PI - Math.PI / 2;
+                    const radiusPercent = 40;
                     const left = `${50 + radiusPercent * Math.cos(angle)}%`;
                     const top = `${50 + radiusPercent * Math.sin(angle)}%`;
 
                     const roleObj = p.role ? ROLES_DB[p.role] : null;
                     const hypothesisObj = p.hypothesisRole ? ROLES_DB[p.hypothesisRole] : null;
                     const isRevealed = revealedSeats[index];
+                    const isMe = p.id === currentUserId;
 
                     const isNominee = nomination.active && nomination.nomineeId === p.id;
                     const isVotingNow = nomination.active && currentVoter?.id === p.id;
-                    const hasVoted = nomination.votes ? Boolean(nomination.votes[p.id]) : false;
+                    const hasVoted = Boolean(nomination.votes && nomination.votes[p.id]);
                     const nightWakeOrder = (phase === 'night' && p.role) ? nightOrderRankMap[p.role] : null;
 
                     return (
                       <div
-                        key={p.id || index}
+                        key={p.id}
                         style={{ left, top }}
                         className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center z-20 group"
                       >
                         {nomination.active && (
                           <div
                             onClick={() => {
+                              if (!isStorytellerMode && !isMe) return;
                               if (!p.alive && !p.ghostVote) return;
-                              setNomination(curr => ({
-                                ...curr,
-                                votes: { ...curr.votes, [p.id]: !curr.votes[p.id] }
-                              }));
+                              const updatedVotes = { ...nomination.votes, [p.id]: !nomination.votes[p.id] };
+                              const updatedNom = { ...nomination, votes: updatedVotes };
+                              setNomination(updatedNom);
+                              broadcastGameState(playersRef.current, phase, gameStarted, { nomination: updatedNom });
                             }}
-                            className={`mb-1 px-2.5 py-0.5 rounded-full text-[11px] font-black shadow-lg cursor-pointer transition ${
+                            className={`mb-1 px-2.5 py-0.5 rounded-full text-[11px] font-black shadow-lg transition ${
+                              isStorytellerMode || isMe ? 'cursor-pointer' : 'cursor-default'
+                            } ${
                               hasVoted
-                                ? 'bg-amber-400 text-stone-950 border-2 border-white ring-2 ring-amber-400/80 scale-110'
+                                ? 'bg-amber-400 text-stone-950 border-2 border-white ring-2 ring-amber-400/80 scale-105'
                                 : 'bg-stone-900 text-stone-400 border border-stone-700'
                             }`}
                           >
@@ -1808,16 +1848,18 @@
                           </div>
                         )}
 
-                        {/* WEBCAM DU JOUEUR */}
+                        {/* CARRE EMOJI OU VRAIE WEBCAM DU JOUEUR */}
                         <div
                           onClick={() => {
                             if (isStorytellerMode && phase === 'night') {
                               setVisitingCottagePlayer(p);
                             }
                           }}
-                          className={`relative w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-stone-950 border-2 overflow-hidden shadow-2xl mb-1.5 cursor-pointer transition ${
+                          className={`relative w-16 h-16 sm:w-20 sm:h-20 md:w-22 md:h-22 rounded-2xl bg-stone-950 border-2 overflow-hidden shadow-2xl mb-1 transition ${
+                            isMe ? 'ring-2 ring-amber-400/80' : ''
+                          } ${
                             phase === 'night' && isStorytellerMode
-                              ? 'border-indigo-400 ring-4 ring-indigo-500/50 hover:scale-105'
+                              ? 'border-indigo-400 ring-4 ring-indigo-500/50 hover:scale-105 cursor-pointer'
                               : isNominee
                               ? 'border-red-500 ring-4 ring-red-500/80 animate-pulse'
                               : isVotingNow
@@ -1825,18 +1867,22 @@
                               : 'border-stone-700 hover:border-amber-500'
                           }`}
                         >
-                          <div className="w-full h-full flex flex-col items-center justify-center text-3xl sm:text-4xl bg-stone-900/90 select-none">
-                            <span>{p.avatar}</span>
-                          </div>
-
-                          {!p.alive && (
-                            <div className="absolute inset-0 bg-black/85 flex flex-col items-center justify-center">
-                              <Icon name="Skull" className="w-8 h-8 text-red-500 drop-shadow-lg" />
-                              <span className="text-[9px] font-bold text-red-400 tracking-wider uppercase mt-1">Défunt</span>
+                          {isMe && playerCamActive ? (
+                            <video ref={playerVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex flex-col items-center justify-center text-2xl sm:text-3xl md:text-4xl bg-stone-900/90 select-none">
+                              <span>{p.avatar}</span>
                             </div>
                           )}
 
-                          <div className="absolute top-1 right-1 bg-black/80 px-1.5 py-0.5 rounded-md text-[9px] border border-stone-700 text-stone-300 font-bold flex items-center gap-0.5">
+                          {!p.alive && (
+                            <div className="absolute inset-0 bg-black/85 flex flex-col items-center justify-center">
+                              <Icon name="Skull" className="w-6 h-6 sm:w-7 sm:h-7 text-red-500 drop-shadow-lg" />
+                              <span className="text-[8px] sm:text-[9px] font-bold text-red-400 tracking-wider uppercase mt-0.5">Défunt</span>
+                            </div>
+                          )}
+
+                          <div className="absolute top-1 right-1 bg-black/80 px-1 py-0.5 rounded text-[8px] sm:text-[9px] border border-stone-700 text-stone-300 font-bold flex items-center gap-0.5">
                             {phase === 'night' ? '🏠' : (DAY_BREAKOUT_ROOMS.find(r => r.id === p.inRoom)?.icon || '🔒')}
                           </div>
                         </div>
@@ -1851,7 +1897,7 @@
                                 setRolePickerModal({ seatIndex: index, isPlayerHypothesis: true });
                               }
                             }}
-                            className={`relative w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center cursor-pointer transition-all shadow-2xl ${
+                            className={`relative w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-full flex items-center justify-center cursor-pointer transition-all shadow-2xl ${
                               !p.alive
                                 ? 'border-2 border-stone-600 bg-stone-950 grayscale'
                                 : isNominee
@@ -1863,13 +1909,13 @@
                           >
                             {isStorytellerMode || isRevealed ? (
                               roleObj ? (
-                                <img src={roleObj.cdnIcon} alt={roleObj.name} className="w-10 h-10 object-contain drop-shadow" onError={(e) => { e.target.style.display = 'none'; }} />
+                                <img src={roleObj.cdnIcon} alt={roleObj.name} className="w-8 h-8 sm:w-10 sm:h-10 object-contain drop-shadow" onError={(e) => { e.target.style.display = 'none'; }} />
                               ) : (
-                                <span className="text-stone-500 text-xs font-serif font-bold">Vide</span>
+                                <span className="text-stone-500 text-[10px] sm:text-xs font-serif font-bold">Vide</span>
                               )
                             ) : (
                               hypothesisObj ? (
-                                <img src={hypothesisObj.cdnIcon} alt={hypothesisObj.name} className="w-10 h-10 object-contain drop-shadow opacity-90" onError={(e) => { e.target.style.display = 'none'; }} />
+                                <img src={hypothesisObj.cdnIcon} alt={hypothesisObj.name} className="w-8 h-8 sm:w-10 sm:h-10 object-contain drop-shadow opacity-90" onError={(e) => { e.target.style.display = 'none'; }} />
                               ) : (
                                 <span className="text-stone-600 text-xs font-serif font-bold">?</span>
                               )
@@ -1877,14 +1923,15 @@
 
                             {isStorytellerMode && phase === 'night' && nightWakeOrder && (
                               <div
-                                className="absolute -top-1.5 -left-1.5 w-6 h-6 rounded-full bg-gradient-to-br from-indigo-500 to-purple-800 border-2 border-amber-300 text-white flex items-center justify-center text-[10px] font-black font-mono shadow-[0_0_12px_rgba(129,140,248,0.9)] z-40 animate-pulse"
+                                className="absolute -top-1 -left-1 w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-gradient-to-br from-indigo-500 to-purple-800 border-2 border-amber-300 text-white flex items-center justify-center text-[9px] sm:text-[10px] font-black font-mono shadow-[0_0_12px_rgba(129,140,248,0.9)] z-40 animate-pulse"
                               >
                                 {nightWakeOrder}
                               </div>
                             )}
 
+                            {/* TOOLTIP ADAPTÉ */}
                             {isStorytellerMode && roleObj && (
-                              <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block z-50 pointer-events-none w-56 p-2 rounded-xl bg-stone-950/95 border-2 border-amber-500 text-left shadow-2xl backdrop-blur-md">
+                              <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block z-50 pointer-events-none w-52 sm:w-60 p-2 sm:p-2.5 rounded-xl bg-stone-950/98 border-2 border-amber-500 text-left shadow-2xl backdrop-blur-md">
                                 <div className="flex items-center gap-1.5 border-b border-stone-800 pb-1 mb-1">
                                   <span className="text-xs font-bold text-amber-300 font-serif">{roleObj.name}</span>
                                   <span className="text-[9px] font-mono text-stone-400 uppercase ml-auto">({roleObj.team})</span>
@@ -1906,9 +1953,9 @@
                             )}
                           </div>
 
-                          {/* MINI-TOKENS DE RAPPEL SANS CHEVAUCHEMENT */}
-                          <div className="absolute left-full ml-1.5 top-1/2 -translate-y-1/2 flex flex-col gap-1 z-30 pointer-events-auto">
-                            {(Array.isArray(p.reminders) ? p.reminders : []).map((remLabel, rIdx) => {
+                          {/* MINI-TOKENS DE RAPPEL DÉPORTÉS */}
+                          <div className="absolute left-full ml-1 top-1/2 -translate-y-1/2 flex flex-col gap-1 z-30 pointer-events-auto">
+                            {(p.reminders || []).map((remLabel, rIdx) => {
                               const preset = REMINDERS_PRESETS.find(pr => pr.label === remLabel) || {
                                 label: remLabel,
                                 code: 'RAPP',
@@ -1923,17 +1970,16 @@
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     if (isStorytellerMode) {
-                                      setPlayers(curr => {
-                                        const updated = curr.map(pl => pl.id === p.id ? { ...pl, reminders: pl.reminders.filter((_, idx) => idx !== rIdx) } : pl);
-                                        broadcastGameState(updated);
-                                        return updated;
-                                      });
+                                      const updated = playersRef.current.map(pl => pl.id === p.id ? { ...pl, reminders: pl.reminders.filter((_, idx) => idx !== rIdx) } : pl);
+                                      playersRef.current = updated;
+                                      setPlayers(updated);
+                                      broadcastGameState(updated);
                                     }
                                   }}
-                                  className={`h-6 px-1.5 rounded-md ${preset.color} border-2 ${preset.border} flex items-center gap-1 shadow-2xl cursor-pointer hover:scale-110 transition whitespace-nowrap`}
+                                  className={`h-5 sm:h-6 px-1 rounded-md ${preset.color} border sm:border-2 ${preset.border} flex items-center gap-0.5 sm:gap-1 shadow-2xl cursor-pointer hover:scale-110 transition whitespace-nowrap`}
                                 >
-                                  <span className="text-xs leading-none">{preset.icon}</span>
-                                  <span className="text-[9px] font-black text-white tracking-wider font-mono">
+                                  <span className="text-[10px] sm:text-xs leading-none">{preset.icon}</span>
+                                  <span className="text-[8px] sm:text-[9px] font-black text-white tracking-wider font-mono">
                                     {preset.code}
                                   </span>
                                 </div>
@@ -1946,7 +1992,7 @@
                                   e.stopPropagation();
                                   setReminderPickerModal(index);
                                 }}
-                                className="w-6 h-6 rounded-md bg-stone-900 hover:bg-amber-600 border-2 border-stone-500 text-stone-200 hover:text-white flex items-center justify-center text-xs font-bold transition shadow-lg"
+                                className="w-5 h-5 sm:w-6 sm:h-6 rounded-md bg-stone-900 hover:bg-amber-600 border border-stone-500 text-stone-200 hover:text-white flex items-center justify-center text-[10px] sm:text-xs font-bold transition shadow-lg"
                               >
                                 +
                               </button>
@@ -1954,11 +2000,11 @@
                           </div>
                         </div>
 
-                        <div className="mt-1 px-2.5 py-0.5 rounded-lg bg-black/90 border border-stone-800 text-center shadow max-w-[120px]">
-                          <div className="text-[11px] font-bold text-stone-200 truncate">{p.name}</div>
+                        <div className="mt-0.5 px-2 py-0.5 rounded-lg bg-black/90 border border-stone-800 text-center shadow max-w-[110px]">
+                          <div className="text-[10px] sm:text-[11px] font-bold text-stone-200 truncate">{p.name}</div>
                         </div>
 
-                        <div className="flex items-center gap-1 mt-1 opacity-0 group-hover:opacity-100 transition">
+                        <div className="flex items-center gap-1 mt-0.5 opacity-0 group-hover:opacity-100 transition">
                           {isStorytellerMode && (
                             <button
                               onClick={() => togglePlayerLife(p.id)}
@@ -2178,13 +2224,15 @@
                           setAccusationWizard(w => ({ ...w, step: 2, nominatorId: p.id }));
                         } else {
                           const nominator = players.find(pl => pl.id === accusationWizard.nominatorId);
-                          setPendingAccusation({
+                          const newPending = {
                             nominatorId: nominator.id,
                             nomineeId: p.id,
                             nominatorName: nominator.name,
                             nomineeName: p.name
-                          });
+                          };
+                          setPendingAccusation(newPending);
                           setAccusationWizard(null);
+                          broadcastGameState(playersRef.current, phase, gameStarted, { pendingAccusation: newPending });
                           playSound('bell');
                         }
                       }}
@@ -2321,11 +2369,10 @@
                       if (rolePickerModal.isPlayerHypothesis) {
                         setPlayers(prev => prev.map((p, idx) => idx === rolePickerModal.seatIndex ? { ...p, hypothesisRole: null } : p));
                       } else {
-                        setPlayers(prev => {
-                          const updated = prev.map((p, idx) => idx === rolePickerModal.seatIndex ? { ...p, role: null } : p);
-                          broadcastGameState(updated);
-                          return updated;
-                        });
+                        const updated = playersRef.current.map((p, idx) => idx === rolePickerModal.seatIndex ? { ...p, role: null } : p);
+                        playersRef.current = updated;
+                        setPlayers(updated);
+                        broadcastGameState(updated);
                       }
                       setRolePickerModal(null);
                     }}
@@ -2359,11 +2406,10 @@
                                     if (rolePickerModal.isPlayerHypothesis) {
                                       setPlayers(prev => prev.map((p, idx) => idx === rolePickerModal.seatIndex ? { ...p, hypothesisRole: r.id } : p));
                                     } else {
-                                      setPlayers(prev => {
-                                        const updated = prev.map((p, idx) => idx === rolePickerModal.seatIndex ? { ...p, role: r.id } : p);
-                                        broadcastGameState(updated);
-                                        return updated;
-                                      });
+                                      const updated = playersRef.current.map((p, idx) => idx === rolePickerModal.seatIndex ? { ...p, role: r.id } : p);
+                                      playersRef.current = updated;
+                                      setPlayers(updated);
+                                      broadcastGameState(updated);
                                     }
                                     setRolePickerModal(null);
                                     playSound('bell');
@@ -2430,16 +2476,15 @@
                     <button
                       key={preset.id}
                       onClick={() => {
-                        setPlayers(prev => {
-                          const updated = prev.map((p, idx) => {
-                            if (idx === reminderPickerModal && !p.reminders.includes(preset.label)) {
-                              return { ...p, reminders: [...p.reminders, preset.label] };
-                            }
-                            return p;
-                          });
-                          broadcastGameState(updated);
-                          return updated;
+                        const updated = playersRef.current.map((p, idx) => {
+                          if (idx === reminderPickerModal && !p.reminders.includes(preset.label)) {
+                            return { ...p, reminders: [...p.reminders, preset.label] };
+                          }
+                          return p;
                         });
+                        playersRef.current = updated;
+                        setPlayers(updated);
+                        broadcastGameState(updated);
                         setReminderPickerModal(null);
                         playSound('bell');
                       }}
@@ -2485,7 +2530,7 @@
                       const next = [...demonBluffs];
                       next[demonBluffPickerIndex] = null;
                       setDemonBluffs(next);
-                      broadcastGameState(players, phase, gameStarted, { demonBluffs: next });
+                      broadcastGameState(playersRef.current, phase, gameStarted, { demonBluffs: next });
                       setDemonBluffPickerIndex(null);
                     }}
                     className="w-full py-1.5 bg-stone-900 hover:bg-stone-800 text-stone-400 rounded-lg text-xs font-semibold"
@@ -2503,7 +2548,7 @@
                           const next = [...demonBluffs];
                           next[demonBluffPickerIndex] = r.id;
                           setDemonBluffs(next);
-                          broadcastGameState(players, phase, gameStarted, { demonBluffs: next });
+                          broadcastGameState(playersRef.current, phase, gameStarted, { demonBluffs: next });
                           setDemonBluffPickerIndex(null);
                           playSound('bell');
                         }}
@@ -2568,7 +2613,7 @@
             </div>
           )}
 
-          {/* MODALE : ORDRE DE NUIT OFFICIEL (2 ONGLETS) */}
+          {/* MODALE : ORDRE DE NUIT OFFICIEL */}
           {nightOrderModalOpen && (
             <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in">
               <div className="bg-stone-950 border-2 border-indigo-600 rounded-3xl max-w-md w-full p-5 shadow-2xl space-y-3 max-h-[85vh] flex flex-col">
@@ -2840,51 +2885,8 @@
       );
     }
 
-    // Composant Error Boundary de secours pour empêcher tout écran noir
-    class SafeErrorBoundary extends React.Component {
-      constructor(props) {
-        super(props);
-        this.state = { hasError: false, error: null };
-      }
-      static getDerivedStateFromError(error) {
-        return { hasError: true, error };
-      }
-      componentDidCatch(error, errorInfo) {
-        console.error("Erreur critique interceptée :", error, errorInfo);
-      }
-      render() {
-        if (this.state.hasError) {
-          return (
-            <div className="min-h-screen bg-[#100a14] flex flex-col items-center justify-center p-6 text-center select-none">
-              <div className="w-16 h-16 rounded-full bg-red-950/80 border-2 border-red-500 flex items-center justify-center text-3xl mb-4">
-                ⚠️
-              </div>
-              <h2 className="text-xl font-bold font-serif text-amber-200 mb-2">Une interruption est survenue</h2>
-              <p className="text-xs text-stone-400 max-w-md mb-4">
-                {this.state.error?.message || "Erreur de synchronisation avec le salon."}
-              </p>
-              <button
-                onClick={() => {
-                  this.setState({ hasError: false, error: null });
-                  window.location.reload();
-                }}
-                className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-stone-950 font-bold rounded-xl text-xs shadow-lg"
-              >
-                Recharger la salle
-              </button>
-            </div>
-          );
-        }
-        return this.props.children;
-      }
-    }
-
     const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(
-      <SafeErrorBoundary>
-        <App />
-      </SafeErrorBoundary>
-    );
+    root.render(<App />);
   </script>
 </body>
 </html>
