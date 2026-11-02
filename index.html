@@ -78,6 +78,7 @@
         hypothesisRole: p.hypothesisRole || null,
         alive: p.alive !== undefined ? p.alive : true,
         ghostVote: p.ghostVote !== undefined ? p.ghostVote : true,
+        ghostVotes: typeof p.ghostVotes === 'number' ? p.ghostVotes : (p.ghostVote === false ? 0 : 1),
         reminders: Array.isArray(p.reminders) ? p.reminders : [],
         inRoom: p.inRoom || 'square',
         micActive: p.micActive !== undefined ? p.micActive : true
@@ -111,6 +112,91 @@
       { id: 'ability_used', label: 'Pouvoir épuisé', code: 'ÉPUI', icon: '🚫', color: 'bg-stone-700', border: 'border-stone-400' },
       { id: 'demon_target', label: 'Cible Démon', code: 'CIBL', icon: '🎯', color: 'bg-rose-600', border: 'border-rose-300' }
     ];
+
+    // Votes de fantôme restants (un seul par partie au départ, ajustable par le Conteur)
+    const ghostCount = (p) => (typeof p.ghostVotes === 'number' ? p.ghostVotes : (p.ghostVote === false ? 0 : 1));
+
+    const TEAM_TIPS = {
+      townsfolk: "Partage ton information au bon moment et écoute celle des autres : le Mal ment, mais rarement de façon cohérente. Un Empoisonneur ou un Ivrogne peut fausser ton info, donc recoupe avant d'accuser.",
+      outsider: "Ton rôle t'handicape un peu : sois transparent avec le village ou joue la comédie si besoin. Les Étrangers sont souvent la clé des déductions, assume ton rôle.",
+      minion: "Tu aides ton Démon : mens avec constance, prétends un rôle crédible et oriente les votes sans te griller. Protège le Démon sans jamais le défendre trop ouvertement.",
+      demon: "Fais-toi discret : prépare tes bluffs (rôles absents de la partie) et sacrifie un Sbire si besoin. Tue intelligemment pour ne jamais être le suspect évident."
+    };
+    const ROLE_TIPS = {
+      washerwoman: "Ton info est sûre (sauf poison). Garde-la secrète un moment : le Démon aime se faire passer pour toi. Utilise-la pour confirmer un allié ou piéger un menteur.",
+      librarian: "Si tu apprends qu'il n'y a aucun Étranger, annonce-le : c'est une info forte. Sinon, croise avec le rôle supposé des deux joueurs.",
+      investigator: "Tu sais qu'un des deux joueurs est un Sbire précis. Cherche qui prétend ce rôle ou qui réagit bizarrement quand tu cites les deux noms.",
+      chef: "Ton chiffre dit combien de paires maléfiques sont côte à côte. Redonne-le à chaque changement de place ou de mort pour affiner les déductions.",
+      empath: "Chaque nuit tu sens tes voisins vivants. Si le chiffre monte, un voisin est mauvais : dis qui sont tes voisins et suis l'évolution après chaque mort.",
+      fortuneteller: "Choisis des paires utiles à tester. Un 'oui' désigne un Démon… ou le Red Herring. Évite de tester les mêmes joueurs sans raison.",
+      undertaker: "Tu apprends le rôle de l'exécuté du jour. Utilise-le pour vérifier ce qu'un joueur exécuté prétendait être.",
+      monk: "Protège un joueur utile (pas toi) : celui qui a le plus d'info. Si personne ne meurt, ton choix était bon ou le Démon a visé ailleurs.",
+      slayer: "Tu n'as qu'un seul tir. Attends d'être sûr du Démon, mais ne meurs pas avec ton pouvoir : un tir raté ne coûte que ta crédibilité.",
+      soldier: "Le Démon ne peut pas te tuer. Tu peux l'annoncer pour attirer l'attention, ou le cacher pour survivre. Un joueur qui survit trop bien devient suspect.",
+      mayor: "Ta victoire se joue à 3 joueurs sans exécution. Révèle-toi tard et reste vivant : le Démon peut aussi te viser pour te voir mourir.",
+      butler: "Tu ne peux voter que si ton maître vote. Choisis un maître de confiance et explique clairement tes votes.",
+      drunk: "Tu crois être un Villageois mais ton info peut être fausse. Reste prudent : si les infos se contredisent, envisage d'être l'Ivrogne.",
+      recluse: "Tu peux sembler maléfique aux yeux du Conteur. Révèle-toi avant d'être exécuté pour t'éviter une mort injuste.",
+      saint: "Ne te fais jamais exécuter. Mets-toi en avant pour prouver ta bonne foi mais méfie-toi : le Mal tentera de te faire exécuter.",
+      poisoner: "Empoisonne les joueurs qui ont le plus d'info. Change de cible pour ne pas te trahir et reste cohérent avec ton faux rôle.",
+      spy: "Tu vois le Grimoire : retiens-en un maximum et mens avec précision. Tu peux passer pour un bon rôle, mais fais attention aux tests.",
+      scarletwoman: "Si le Démon meurt, tu le remplaces à partir de 5 joueurs. Reste discrète pour pouvoir reprendre la partie.",
+      baron: "Ta présence ajoute des Étrangers : surveille leur nombre pour comprendre. Fais-toi passer pour un Étranger si possible.",
+      imp: "Tu tues chaque nuit. Si tu te tues, un Sbire prend ta place : piège souvent utile en cas de soupçon. Prépare de bons bluffs.",
+      grandmother: "Ton petit-enfant est un bon joueur : s'il meurt, tu meurs aussi. Garde-le secret pour ne pas le mettre en danger.",
+      sailor: "Chaque nuit tu bois avec quelqu'un : l'un de vous deux sera ivre. Choisis un allié et utilise ce flou pour t'éviter la mort.",
+      chambermaid: "Tu vérifies combien de joueurs se sont réveillés à cause de leur pouvoir. Choisis des joueurs suspects pour valider leurs rôles.",
+      exorcist: "Tu empêches le Démon d'agir sur sa cible. Ne choisis jamais deux fois le même joueur ; vérifie si une mort s'arrête.",
+      innkeeper: "Tu protèges deux joueurs mais l'un sera ivre. Pense à les choisir pour limiter les morts et brouiller les infos.",
+      gambler: "Tu peux parier sur le rôle d'un joueur : si tu te trompes, tu meurs. Ne tente que si tu es quasi certain.",
+      gossip: "Tes affirmations publiques ont un effet la nuit. Choisis des phrases vérifiables pour tuer un mauvais joueur.",
+      courtier: "Une fois par partie, tu rends un rôle ivre trois jours. Utilise-le sur le Démon ou sur un rôle clé.",
+      professor: "Une fois par partie, tu ressuscites un villageois. Garde-le pour un rôle utile ou pour sauver la partie.",
+      minstrel: "Si un Sbire est exécuté, tout le monde est ivre ce soir. Évite les exécutions de Sbires quand tu veux garder des infos fiables.",
+      tea_lady: "Si tes deux voisins sont bons, ils survivent. Dis qui sont tes voisins pour les protéger du Démon.",
+      pacifist: "Les exécutions de bons joueurs peuvent être épargnées. Révèle-toi quand un innocent est visé.",
+      fool: "Tu es sauvé de ta première mort. Mieux vaut te taire : si le Démon le sait, il gaspille sa nuit ailleurs.",
+      clockmaker: "Ton chiffre donne la distance entre le Démon et un Sbire. Redonne-le et compare les infos des autres.",
+      dreamer: "Choisis un joueur : tu apprends deux rôles dont un est le sien. Cherche à confirmer un rôle important.",
+      snake_charmer: "Si tu choisis le Démon, vous échangez vos rôles. Cible le joueur le plus suspect.",
+      mathematician: "Tu apprends combien de pouvoirs ont mal fonctionné. Si le chiffre est élevé, le Mal triche beaucoup.",
+      flowergirl: "Tu sais si le Démon a voté la veille. Note qui vote chaque jour pour recouper.",
+      town_crier: "Tu sais si un Sbire a nommé quelqu'un. Utilise l'info pour savoir quel côté pousse les accusations.",
+      oracle: "Tu apprends combien de morts sont maléfiques. Utilise-le pour estimer le nombre de Mal restant.",
+      savant: "Chaque jour, deux informations dont une est fausse. Croise-les avec les infos des autres.",
+      seamstress: "Une fois par partie, tu vérifies si deux joueurs sont du même camp. Choisis les paires les plus suspectes.",
+      philosopher: "Tu copies le pouvoir d'un bon rôle. Choisis un rôle utile pour ton équipe.",
+      artist: "Tu poses une question fermée au Conteur. Pose une question précise qui élimine des hypothèses.",
+      juggler: "Tu énonces des suppositions de rôles : le Conteur te dit combien sont justes. Prépare des hypothèses précises.",
+      sage: "Si le Démon te tue, tu apprends qui est le coupable. Reste en vie pour survivre à son piège.",
+      tinker: "Tu peux mourir à tout moment. Livre tes infos tôt dans la partie.",
+      moonchild: "Quand tu meurs, tu désignes un joueur : s'il est bon, il meurt. Choisis un joueur suspect.",
+      goon: "Le premier à te cibler devient ivre et tu changes de camp. Garde cette info pour un moment important.",
+      klutz: "Si tu désignes un mauvais joueur à ta mort, le Mal gagne. Réfléchis avant de te dévoiler.",
+      mutant: "Si tu avoues être un Étranger, tu peux être exécuté. Reste discret ou joue un Villageois.",
+      sweetheart: "Quand tu meurs, un joueur devient ivre. Utilise ta mort pour brouiller les infos du Mal.",
+      barber: "À ta mort, deux joueurs échangent leurs rôles. Ça peut aider le bien, ou le détruire.",
+      lunatic: "Tu penses être le Démon mais tu ne l'es pas. Joue pour attirer l'attention du Mal.",
+      godfather: "Tu apprends les Étrangers morts : si un Étranger est mort, tu tues une nuit supplémentaire. Joue sur la peur.",
+      devils_advocate: "Chaque nuit, protège un joueur de l'exécution. Choisis un allié ou le Démon.",
+      assassin: "Une fois par partie, tu tues sans être arrêté. Choisis la cible clé au bon moment.",
+      mastermind: "Si le Démon meurt, le jeu continue un jour de plus. Protège ton avantage en gardant le Démon discret.",
+      evil_twin: "Tu as un jumeau bon. Si l'un est exécuté, le Mal gagne. Fais en sorte que les villageois exécutent le mauvais jumeau.",
+      witch: "Chaque nuit, tu maudis un joueur : s'il nomme, il meurt. Choisis des joueurs qui vont nommer ou voter.",
+      cerenovus: "Tu forces un joueur à jouer un rôle. Choisis un rôle crédible pour le piéger s'il refuse.",
+      pit_hag: "Tu transformes un joueur en un autre rôle. Utilise-le pour créer de nouveaux Démons ou casser des infos.",
+      widow: "Tu vois le Grimoire une fois et empoisonnes un joueur. Fais-en bon usage avant d'être exécuté.",
+      goblin: "Si tu es exécuté après t'être révélé Gobelin, le Mal gagne. Révèle-toi au bon moment.",
+      zombuul: "Tu peux survivre une fois à la mort. Reste calme : le village peut te croire mort.",
+      pukka: "Tu empoisonnes un joueur qui mourra la nuit suivante. Prépare le terrain pour une victime utile.",
+      shabaloth: "Tu tues deux joueurs par nuit. Évite de te trahir par des morts trop voyantes.",
+      po: "Tu peux sauter une nuit pour en tuer trois. Calcule le bon moment pour frapper.",
+      fang_gu: "Si tu tues un Étranger, tu transmets ton rôle. Garde cette astuce secrète.",
+      vigormortis: "Tes Sbires tués gardent leurs pouvoirs. Utilise-les comme alliés après leur mort.",
+      nodii: "Tu tues mais les infos des autres se brouillent. Profite du doute généré.",
+      vortox: "Les infos des villageois sont fausses. Joue sur la méfiance et fais-toi passer pour un bon joueur.",
+      leviathan: "Si deux bons joueurs sont exécutés, le Mal gagne. Pousse des exécutions rapides."
+    };
 
     // ==========================================
     // COMPOSANT D'ICÔNES SVG AUTONOME
@@ -393,6 +479,15 @@
       const [cotPanelMin, setCotPanelMin] = useState(false);
       const [roomInput, setRoomInput] = useState('');
       const [needleIn, setNeedleIn] = useState(false);
+      const [customScript, setCustomScript] = useState(null);
+      const [scriptJsonText, setScriptJsonText] = useState('');
+      const [scriptMsg, setScriptMsg] = useState('');
+      const [vp, setVp] = useState({ w: window.innerWidth || 1200, h: window.innerHeight || 800 });
+      useEffect(() => {
+        const onResize = () => setVp({ w: window.innerWidth, h: window.innerHeight });
+        window.addEventListener('resize', onResize);
+        return () => window.removeEventListener('resize', onResize);
+      }, []);
       const groupList = Object.values(nightState.groups || {});
       const cottageIdOf = (pid) => { const g = groupList.find(x => (x.ids || []).includes(pid)); return g ? g.id : 'own_' + vk(pid); };
       const cottageMembers = (cid) => !cid ? [] : (cid.startsWith('own_')
@@ -701,6 +796,7 @@
             setNomination(prev => keep(prev, data.nomination || { active: false, nominatorId: null, nomineeId: null, clockIndex: -1, isRunning: false, speed: 3000 }));
             if (data.storyteller) setStoryteller(prev => keep(prev, data.storyteller));
             if (data.selectedScriptId) setSelectedScriptId(data.selectedScriptId);
+            setCustomScript(prev => keep(prev, data.customScript || null));
             setOnTheBlock(prev => keep(prev, data.onTheBlock || null));
             const nt = data.night || {};
             setNightState(prev => keep(prev, { at: nt.at || null, groups: nt.groups || {} }));
@@ -763,6 +859,7 @@
           rolesDistributedToPlayers,
           storyteller,
           selectedScriptId,
+          customScript: customScript || null,
           demonBluffs,
           onTheBlock: onTheBlock || null,
           voteHistory,
@@ -774,6 +871,50 @@
         });
       };
       broadcastRef.current = broadcastGameState;
+
+      // Marque d'exécution posée / retirée à la main par le Conteur (en plus de celle qui vient des votes)
+      const toggleBlock = (p) => {
+        const next = onTheBlock && onTheBlock.playerId === p.id ? null : { playerId: p.id, playerName: p.name, votes: 0 };
+        setOnTheBlock(next);
+        broadcastGameState(playersRef.current, phase, gameStarted, { onTheBlock: next || null });
+      };
+
+      // Votes de fantôme restants d'un joueur mort
+      const adjustGhostVotes = (p, delta) => {
+        const n = Math.max(0, ghostCount(p) + delta);
+        const updated = playersRef.current.map(pl => pl.id === p.id ? { ...pl, ghostVotes: n, ghostVote: n > 0 } : pl);
+        setPlayers(updated);
+        broadcastGameState(updated);
+      };
+
+      // Script personnalisé au format JSON (ex. export de l'éditeur officiel) : on garde les rôles reconnus
+      const loadCustomScript = (text) => {
+        try {
+          const data = JSON.parse(text);
+          const arr = Array.isArray(data) ? data : (data.roles || []);
+          const meta = arr.find(x => x && typeof x === 'object' && x.id === '_meta') || {};
+          const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]/g, '');
+          const byNorm = {};
+          Object.keys(ROLES_DB).forEach(k => { byNorm[norm(k)] = k; });
+          const ids = [];
+          const unknown = [];
+          arr.forEach(x => {
+            const raw = typeof x === 'string' ? x : (x && x.id);
+            if (!raw || raw === '_meta') return;
+            const k = byNorm[norm(raw)];
+            if (k) { if (!ids.includes(k)) ids.push(k); } else unknown.push(raw);
+          });
+          if (ids.length === 0) throw new Error('aucun rôle reconnu');
+          const script = { id: 'custom', name: meta.name || 'Script personnalisé', desc: meta.author ? 'Par ' + meta.author : 'Script importé (JSON)', roles: ids };
+          setCustomScript(script);
+          setSelectedScriptId('custom');
+          broadcastGameState(playersRef.current, phase, gameStarted, { selectedScriptId: 'custom', customScript: script });
+          setScriptMsg(`✔ « ${script.name} » chargé : ${ids.length} rôles` + (unknown.length ? ` (ignorés : ${unknown.join(', ')})` : ''));
+          playSound('bell');
+        } catch (e) {
+          setScriptMsg('✘ JSON invalide : ' + e.message);
+        }
+      };
 
       // Minuteur du jour synchronisé (marche/pause)
       useEffect(() => {
@@ -917,7 +1058,7 @@
       };
 
       // --- QUOTAS OFFICIELS BOTC ---
-      const currentScript = SCRIPTS_DATA[selectedScriptId] || SCRIPTS_DATA.tb;
+      const currentScript = (selectedScriptId === 'custom' && customScript) ? customScript : (SCRIPTS_DATA[selectedScriptId] || SCRIPTS_DATA.tb);
       const officialQuota = PLAYER_DISTRIBUTION[players.length] || null;
 
       const dynamicQuota = useMemo(() => {
@@ -1089,7 +1230,7 @@
 
       const currentVoter = nomination.clockIndex >= 0 ? orderedVoters[nomination.clockIndex] : null;
       const lockedVotes = nomination.locked || {};
-      const eligibleToVote = (p) => !!p && (p.alive || p.ghostVote);
+      const eligibleToVote = (p) => !!p && (p.alive || ghostCount(p) > 0);
       const orderIdxOf = (pid) => orderedVoters.findIndex(v => v.id === pid);
       // 'passed' : l'aiguille est déjà passée (vote verrouillé) · 'current' : l'aiguille est dessus · 'future' : pas encore
       const voteStatusOf = (p) => {
@@ -1116,6 +1257,21 @@
         const t = setTimeout(() => setNeedleIn(true), 80);
         return () => clearTimeout(t);
       }, [nomination.active, nomination.nomineeId, nomination.nominatorId]);
+
+      // Espace = lever / baisser la main pendant son vote (tant que l'aiguille n'est pas passée)
+      useEffect(() => {
+        const onKey = (e) => {
+          if (e.code !== 'Space' || !canIVote || myVoteLocked) return;
+          const t = e.target;
+          const tag = t && t.tagName;
+          if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (t && t.isContentEditable)) return;
+          if (tag === 'BUTTON') t.blur();
+          e.preventDefault();
+          castVote(myPlayer, !votesRef.current[vk(myPlayer.id)]);
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+      }, [canIVote, myVoteLocked, myPlayer, nomination.clockIndex]);
 
       const pushNomination = (n) => {
         nomRef.current = n;
@@ -1154,7 +1310,11 @@
           if (!block || total > block.votes) block = { playerId: nominee.id, playerName: nominee.name, votes: total };
           else if (total === block.votes) block = null;
         }
-        const updated = ps.map(p => (!p.alive && locked[vk(p.id)]) ? { ...p, ghostVote: false } : p);
+        const updated = ps.map(p => {
+          if (p.alive || !locked[vk(p.id)]) return p;
+          const left = Math.max(0, ghostCount(p) - 1);
+          return { ...p, ghostVotes: left, ghostVote: left > 0 };
+        });
         const rec = {
           day: dayNumber,
           nominatorName: nominator ? nominator.name : 'Inconnu',
@@ -1178,11 +1338,12 @@
       tickRef.current = () => {
         const cur = nomRef.current;
         if (!cur || !cur.active) return;
+        if (cur.clockIndex < 0 && (cur.countdown || 0) > 1) { pushNomination({ ...cur, countdown: cur.countdown - 1 }); return; }
         const locked = { ...(cur.locked || {}) };
         const leaving = cur.clockIndex >= 0 ? orderedVoters[cur.clockIndex] : null;
         if (leaving) locked[vk(leaving.id)] = eligibleToVote(leaving) && Boolean(votesRef.current[vk(leaving.id)]);
         if (cur.clockIndex + 1 >= orderedVoters.length) finishNomination(locked);
-        else pushNomination({ ...cur, locked, clockIndex: cur.clockIndex + 1 });
+        else pushNomination({ ...cur, locked, countdown: 0, clockIndex: cur.clockIndex + 1 });
       };
 
       // Horloge automatique (vitesse réglable dans les paramètres du Conteur)
@@ -1191,9 +1352,9 @@
         const t = setTimeout(() => {
           playSound('tick');
           if (tickRef.current) tickRef.current();
-        }, nomination.clockIndex < 0 ? 2500 : (nomination.speed || 3000));
+        }, nomination.clockIndex < 0 ? 1000 : (nomination.speed || 3000));
         return () => clearTimeout(t);
-      }, [isStorytellerMode, nomination.active, nomination.isRunning, nomination.clockIndex, nomination.speed]);
+      }, [isStorytellerMode, nomination.active, nomination.isRunning, nomination.clockIndex, nomination.speed, nomination.countdown]);
 
       const startNomination = (acc) => {
         if (!acc || !isStorytellerMode) return;
@@ -1208,6 +1369,7 @@
           nominatorId: acc.nominatorId,
           nomineeId: acc.nomineeId,
           clockIndex: -1,
+          countdown: 3,
           isRunning: true,
           speed: (nomRef.current && nomRef.current.speed) || 3000
         });
@@ -1594,7 +1756,7 @@
 
           {/* MON VOTE : bouton modifiable librement, pris en compte quand l'aiguille arrive sur moi, verrouillé après */}
           {canIVote && (
-            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[55] w-80 max-w-[94vw] bg-stone-950/95 border-2 border-amber-400 rounded-3xl px-4 py-3 shadow-2xl text-center space-y-2 animate-fade-in">
+            <div className="fixed top-24 right-3 z-[55] w-64 max-w-[62vw] bg-stone-950/95 border-2 border-amber-400 rounded-2xl px-3 py-2.5 shadow-2xl text-center space-y-1.5 animate-fade-in">
               <div className="text-[11px] text-stone-300">
                 <strong className="text-sky-300">{(players.find(p => p.id === nomination.nominatorId) || {}).name}</strong> accuse{' '}
                 <strong className="text-red-400">{(players.find(p => p.id === nomination.nomineeId) || {}).name}</strong>
@@ -1602,7 +1764,7 @@
               <button
                 disabled={myVoteLocked}
                 onClick={() => castVote(myPlayer, !votes[vk(myPlayer.id)])}
-                className={`w-full px-4 py-3 rounded-2xl font-black text-sm shadow-xl transition active:scale-95 ${
+                className={`w-full px-3 py-2.5 rounded-xl font-black text-xs shadow-xl transition active:scale-95 ${
                   myVoteLocked
                     ? (lockedVotes[vk(myPlayer.id)] ? 'bg-amber-400/60 text-stone-950 cursor-not-allowed' : 'bg-stone-800 text-stone-500 cursor-not-allowed')
                     : votes[vk(myPlayer.id)]
@@ -1612,7 +1774,7 @@
               >
                 {myVoteLocked
                   ? (lockedVotes[vk(myPlayer.id)] ? '✋ Tu as voté OUI' : '✗ Tu n\'as pas voté')
-                  : votes[vk(myPlayer.id)] ? '✋ Je vote OUI (cliquer pour retirer)' : '🖐️ Je ne vote pas (cliquer pour voter OUI)'}
+                  : votes[vk(myPlayer.id)] ? '✋ Je vote OUI · Espace pour retirer' : '🖐️ Je ne vote pas · Espace pour voter'}
               </button>
               <div className={`text-[10px] ${myTurnToVote ? 'text-amber-300 font-bold animate-pulse' : 'text-stone-400'}`}>
                 {myVoteLocked
@@ -1924,13 +2086,13 @@
             
             {/* CONTEUR EN HAUT À GAUCHE */}
             <div className="absolute top-2 left-2 sm:top-3 sm:left-3 z-30 flex flex-col items-start gap-1">
-              <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-2xl overflow-hidden border-2 border-amber-500/80 bg-stone-950 shadow-2xl group">
+              <div className="relative w-24 h-24 sm:w-36 sm:h-36 rounded-2xl overflow-hidden border-2 border-amber-500/80 bg-stone-950 shadow-2xl group">
                 {isStorytellerMode && hasVideo(webcamStream) ? (
                   <StreamVideo stream={webcamStream} className="w-full h-full object-cover" />
                 ) : (!isStorytellerMode && hasVideo(remoteStreams[hostKey])) ? (
                   <StreamVideo stream={remoteStreams[hostKey]} className="w-full h-full object-cover" />
                 ) : (
-                  <div className="w-full h-full flex flex-col items-center justify-center bg-stone-900 text-2xl sm:text-3xl">
+                  <div className="w-full h-full flex flex-col items-center justify-center bg-stone-900 text-5xl sm:text-7xl">
                     <span>{storyteller.avatar}</span>
                   </div>
                 )}
@@ -2105,7 +2267,7 @@
                           🗣️ <strong className="text-sky-300">{players.find(p => p.id === nomination.nominatorId)?.name}</strong> ➜ 🎯 <strong className="text-red-400">{players.find(p => p.id === nomination.nomineeId)?.name}</strong>
                         </div>
                         <div className="text-lg sm:text-2xl font-serif font-black text-amber-200 my-0.5">
-                          ✋ {countedVotes} / {majorityRequired}
+                          {nomination.clockIndex === -1 && nomination.isRunning ? (<span className="text-5xl text-amber-300 animate-pulse">{nomination.countdown || '…'}</span>) : (<>✋ {countedVotes} / {majorityRequired}</>)}
                         </div>
                         <div className="text-[10px] text-stone-400 mb-1 truncate max-w-[130px]">
                           {nomination.clockIndex === -1 ? (
@@ -2123,7 +2285,7 @@
                                   const newNom = {
                                     ...nomination,
                                     isRunning: true,
-                                    clockIndex: nomination.clockIndex === -1 ? 0 : nomination.clockIndex
+                                    clockIndex: nomination.clockIndex
                                   };
                                   setNomination(newNom);
                                   broadcastGameState(playersRef.current, phase, gameStarted, { nomination: newNom });
@@ -2186,6 +2348,13 @@
                     const angle = (index / players.length) * 2 * Math.PI - Math.PI / 2;
                     const left = `${50 + 41 * Math.cos(angle)}%`;
                     const top = `${50 + 41 * Math.sin(angle)}%`;
+                    const isRightHalf = Math.cos(angle) >= 0;
+
+                    // Tailles adaptées au nombre de joueurs et à l'écran (plus grand quand il y a de la place)
+                    const circleD = Math.min(0.65 * vp.h, 0.84 * vp.w);
+                    const chord = 2 * 0.41 * circleD * Math.sin(Math.PI / Math.max(players.length, 3));
+                    const seatPx = Math.round(Math.max(52, Math.min(112, chord * 0.66)));
+                    const tokenPx = Math.round(Math.max(42, Math.min(76, chord * 0.46)));
 
                     const isMe = p.id === currentUserId;
                     const roleObj = p.role ? ROLES_DB[p.role] : null;
@@ -2202,14 +2371,18 @@
                     const canClickVote = nomination.active && isStorytellerMode && elig;
                     const mjAtThisCottage = phase === 'night' && nightState.at === cottageIdOf(p.id);
 
+                    const isBlock = !!onTheBlock && onTheBlock.playerId === p.id;
+                    const provisionalBlock = isNominee && !isBlock && countedVotes >= majorityRequired && (!onTheBlock || countedVotes > onTheBlock.votes);
+
                     const stream = isMe ? webcamStream : remoteStreams[peerKeyOf(roomCode, p.id)];
+                    const videoOn = hasVideo(stream);
                     const tokens = isStorytellerMode ? p.reminders : (myTokens[p.id] || []);
 
                     return (
                       <div
                         key={p.id}
                         style={{ left, top }}
-                        className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center z-20 group"
+                        className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center z-20 hover:z-50 group"
                       >
                         {/* MAIN DE VOTE */}
                         {nomination.active && (
@@ -2228,55 +2401,89 @@
                         )}
 
                         {/* CARRÉ AVATAR / WEBCAM */}
-                        <div
-                          onClick={() => { if (isStorytellerMode && phase === 'night') moveToCottage(cottageIdOf(p.id)); }}
-                          className={`relative w-12 h-12 sm:w-16 sm:h-16 rounded-2xl bg-stone-950 border-2 overflow-hidden shadow-2xl mb-1 transition cursor-pointer ${
-                            mjAtThisCottage ? 'ring-4 ring-emerald-400/90' : phase === 'night' && isStorytellerMode ? 'ring-2 ring-indigo-500/80 hover:scale-105' : isMe ? 'ring-2 ring-amber-400/80' : ''
-                          } ${
-                            isNominee ? 'border-red-500 ring-4 ring-red-500/80 animate-pulse'
-                              : isVotingNow ? 'border-amber-400 ring-4 ring-amber-400/80'
-                              : 'border-stone-700 hover:border-amber-500'
-                          }`}
-                          title={phase === 'night' && isStorytellerMode ? `Aller dans le cottage de ${p.name}` : ''}
-                        >
-                          {hasVideo(stream) ? (
-                            <StreamVideo stream={stream} className="w-full h-full object-cover" />
-                          ) : (
-                            <div className="w-full h-full flex flex-col items-center justify-center text-xl sm:text-2xl bg-stone-900/90 select-none">
-                              <span>{p.avatar}</span>
-                            </div>
-                          )}
+                        <div className="relative mb-1">
+                          <div
+                            onClick={() => { if (isStorytellerMode && phase === 'night') moveToCottage(cottageIdOf(p.id)); }}
+                            style={{ width: seatPx, height: seatPx }}
+                            className={`relative rounded-2xl bg-stone-950 border-2 overflow-hidden shadow-2xl transition cursor-pointer ${
+                              mjAtThisCottage ? 'ring-4 ring-emerald-400/90' : phase === 'night' && isStorytellerMode ? 'ring-2 ring-indigo-500/80 hover:scale-105' : isMe ? 'ring-2 ring-amber-400/80' : ''
+                            } ${
+                              isNominee ? 'border-red-500 ring-4 ring-red-500/80 animate-pulse'
+                                : isVotingNow ? 'border-amber-400 ring-4 ring-amber-400/80'
+                                : 'border-stone-700 hover:border-amber-500'
+                            }`}
+                            title={phase === 'night' && isStorytellerMode ? `Aller dans le cottage de ${p.name}` : ''}
+                          >
+                            {videoOn ? (
+                              <StreamVideo stream={stream} className={`w-full h-full object-cover ${!p.alive ? 'grayscale' : ''}`} />
+                            ) : (
+                              <div style={{ fontSize: Math.round(seatPx * 0.46) }} className="w-full h-full flex flex-col items-center justify-center bg-stone-900/90 select-none">
+                                <span>{p.avatar}</span>
+                              </div>
+                            )}
 
-                          {!p.alive && (
-                            <div className="absolute inset-0 bg-black/85 flex flex-col items-center justify-center pointer-events-none">
-                              <Icon name="Skull" className="w-5 h-5 text-red-500 drop-shadow-lg" />
-                              <span className="text-[7px] font-bold text-red-400 tracking-wider uppercase">Défunt</span>
-                            </div>
-                          )}
+                            {/* MORT : caméra en noir et blanc + petite tête de mort en haut ; sans caméra, voile sombre */}
+                            {!p.alive && (videoOn ? (
+                              <div className="absolute inset-x-0 top-0 flex justify-center pointer-events-none">
+                                <span className="mt-0.5 px-1 rounded-full bg-black/75 text-[13px] leading-5 border border-red-700">💀</span>
+                              </div>
+                            ) : (
+                              <div className="absolute inset-0 bg-black/85 flex flex-col items-center justify-center pointer-events-none">
+                                <Icon name="Skull" className="w-5 h-5 text-red-500 drop-shadow-lg" />
+                                <span className="text-[7px] font-bold text-red-400 tracking-wider uppercase">Défunt</span>
+                              </div>
+                            ))}
 
-                          <div className="absolute top-0.5 right-0.5 bg-black/80 px-1 rounded text-[8px] border border-stone-700 text-stone-300 font-bold">
-                            {phase === 'night' ? (mjAtThisCottage ? '🧙' : '🏠') : ((DAY_BREAKOUT_ROOMS.find(r => r.id === p.inRoom) || customPrivateRooms.find(r => r.id === p.inRoom) || {}).icon || '🏛️')}
+                            <div className="absolute top-0.5 right-0.5 bg-black/80 px-1 rounded text-[8px] border border-stone-700 text-stone-300 font-bold">
+                              {phase === 'night' ? (mjAtThisCottage ? '🧙' : '🏠') : ((DAY_BREAKOUT_ROOMS.find(r => r.id === p.inRoom) || customPrivateRooms.find(r => r.id === p.inRoom) || {}).icon || '🏛️')}
+                            </div>
+
+                            {/* VOTES DE FANTÔME RESTANTS */}
+                            {!p.alive && (
+                              <div className="absolute bottom-0.5 left-0.5 bg-black/85 px-1 rounded text-[9px] font-bold border border-amber-700 text-amber-300" title="Votes de fantôme restants">
+                                🗳️ {ghostCount(p)}
+                              </div>
+                            )}
                           </div>
+
+                          {/* MARQUE D'EXÉCUTION : définitive (billot) ou provisoire (assez de votes pendant le vote) */}
+                          {(isBlock || provisionalBlock) && (
+                            <div
+                              className={`absolute -top-2 -left-2 z-10 w-8 h-8 rounded-full border-2 border-white flex items-center justify-center shadow-2xl text-base animate-pulse ${isBlock ? 'bg-red-700' : 'bg-orange-600/90'}`}
+                              title={isBlock ? 'Sur le billot : exécution prévue' : 'Assez de votes : sera sur le billot'}
+                            >
+                              {isBlock ? '🪓' : '⚖️'}
+                            </div>
+                          )}
                         </div>
 
-                        {/* JETON DE RÔLE + JETONS DE RAPPEL */}
-                        <div className="relative flex items-center justify-center">
+                        {/* JETON DE RÔLE + JETONS DE RAPPEL + INFOBULLE DU POUVOIR (du côté du jeton) */}
+                        <div className="relative flex items-center justify-center group/tok">
                           <div
                             onClick={() => setRolePickerModal({ seatIndex: index, isPlayerHypothesis: !isStorytellerMode })}
-                            onMouseEnter={() => { if (shownRole) setHoverRole(shownRole); }}
-                            onMouseLeave={() => setHoverRole(null)}
-                            className={`relative w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center cursor-pointer transition-all shadow-xl ${
+                            style={{ width: tokenPx, height: tokenPx }}
+                            className={`relative rounded-full flex items-center justify-center cursor-pointer transition-all shadow-xl ${
                               !p.alive ? 'border-2 border-stone-600 bg-stone-950 grayscale' : 'border-2 border-amber-600/70 bg-stone-900 hover:border-amber-400'
                             }`}
                           >
                             {shownRole ? (
-                              <img src={shownRole.cdnIcon} alt={shownRole.name} className={`w-7 h-7 sm:w-8 sm:h-8 object-contain drop-shadow ${shownRole === hypothesisObj && !(canSeeRole && roleObj) ? 'opacity-90' : ''}`} onError={(e) => { e.target.style.display = 'none'; }} />
+                              <img src={shownRole.cdnIcon} alt={shownRole.name} style={{ width: Math.round(tokenPx * 0.74), height: Math.round(tokenPx * 0.74) }} className={`object-contain drop-shadow ${shownRole === hypothesisObj && !(canSeeRole && roleObj) ? 'opacity-90' : ''}`} onError={(e) => { e.target.style.display = 'none'; }} />
                             ) : (
-                              <span className="text-stone-600 text-xs font-serif font-bold">?</span>
+                              <span className="text-stone-600 text-sm font-serif font-bold">?</span>
                             )}
                           </div>
 
-                          <div className="absolute left-full ml-1.5 top-1/2 -translate-y-1/2 flex flex-col gap-1 z-30 pointer-events-auto">
+                          {shownRole && (
+                            <div className={`hidden group-hover/tok:block absolute top-1/2 -translate-y-1/2 z-[70] w-52 max-w-[44vw] p-2 rounded-xl bg-stone-950 border border-amber-500 shadow-2xl pointer-events-none ${isRightHalf ? 'left-full ml-2' : 'right-full mr-2'}`}>
+                              <div className="flex items-center gap-1.5 border-b border-stone-800 pb-1 mb-1">
+                                <span className="text-[11px] font-bold text-amber-300 font-serif truncate">{shownRole.name}</span>
+                                <span className="text-[8px] font-mono text-stone-400 uppercase ml-auto">{shownRole.team}</span>
+                              </div>
+                              <p className="text-[10px] text-stone-200 leading-snug italic font-serif">« {shownRole.ability} »</p>
+                            </div>
+                          )}
+
+                          <div className={`absolute top-1/2 -translate-y-1/2 flex flex-col gap-1 z-30 pointer-events-auto ${isRightHalf ? 'right-full mr-1.5 items-end' : 'left-full ml-1.5 items-start'}`}>
                             {tokens.map((remLabel, rIdx) => {
                               const preset = REMINDER_PRESETS.find(pr => pr.label === remLabel) || {
                                 label: remLabel, code: 'RAPP', icon: '🏷️', color: 'bg-amber-950', border: 'border-amber-400'
@@ -2303,8 +2510,8 @@
                           </div>
                         </div>
 
-                        <div className="mt-0.5 px-1.5 rounded-md bg-black/90 border border-stone-800 text-center shadow max-w-[90px]">
-                          <div className="text-[9px] sm:text-[10px] font-bold text-stone-200 truncate">{p.name}</div>
+                        <div style={{ maxWidth: Math.max(seatPx + 24, 84) }} className="mt-0.5 px-1.5 rounded-md bg-black/90 border border-stone-800 text-center shadow">
+                          <div className="text-[10px] sm:text-xs font-bold text-stone-200 truncate">{p.name}</div>
                         </div>
 
                         {/* ACTIONS RAPIDES AU SURVOL */}
@@ -2317,6 +2524,22 @@
                             >
                               <Icon name={p.alive ? 'Skull' : 'Heart'} className="w-2.5 h-2.5" />
                             </button>
+                          )}
+                          {isStorytellerMode && (
+                            <button
+                              onClick={() => toggleBlock(p)}
+                              className={`px-1 rounded border text-[10px] shadow ${isBlock ? 'bg-red-700 border-white text-white' : 'bg-stone-900 border-stone-600 text-stone-200 hover:bg-red-900'}`}
+                              title={isBlock ? 'Retirer la marque d\'exécution' : 'Poser la marque d\'exécution'}
+                            >
+                              🪓
+                            </button>
+                          )}
+                          {isStorytellerMode && !p.alive && (
+                            <div className="flex items-center rounded border border-amber-700 bg-stone-900 text-[10px] text-amber-300 shadow" title="Votes de fantôme">
+                              <button onClick={() => adjustGhostVotes(p, -1)} className="px-1 hover:bg-amber-900">−</button>
+                              <span className="px-0.5 font-bold">🗳️{ghostCount(p)}</span>
+                              <button onClick={() => adjustGhostVotes(p, 1)} className="px-1 hover:bg-amber-900">+</button>
+                            </div>
                           )}
                           {isStorytellerMode && phase === 'night' && (
                             <button
@@ -3018,6 +3241,10 @@
                 <div className="p-2.5 rounded-xl bg-stone-900 border border-stone-800 text-xs italic text-stone-200">
                   « {wikiRoleModal.ability} »
                 </div>
+                <div className="p-2.5 rounded-xl bg-amber-950/40 border border-amber-800 text-xs text-amber-100 space-y-1">
+                  <div className="font-bold text-amber-300 text-[11px]">💡 Comment le jouer</div>
+                  <p className="leading-relaxed">{ROLE_TIPS[wikiRoleModal.id] || TEAM_TIPS[wikiRoleModal.team]}</p>
+                </div>
               </div>
             </div>
           )}
@@ -3033,20 +3260,51 @@
                   </button>
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-stone-300 font-semibold text-[11px]">
-                    Vitesse balayage vote : {nomination.speed} ms
-                  </label>
-                  <input
-                    type="range"
-                    min="1500"
-                    max="8000"
-                    step="100"
-                    value={nomination.speed}
-                    onChange={(e) => setNomination(n => ({ ...n, speed: Number(e.target.value) }))}
-                    className="w-full accent-amber-500"
-                  />
-                </div>
+                {isStorytellerMode && (
+                  <div className="space-y-1.5">
+                    <label className="text-stone-300 font-semibold text-[11px]">
+                      Vitesse balayage vote : {nomination.speed} ms
+                    </label>
+                    <input
+                      type="range"
+                      min="1500"
+                      max="8000"
+                      step="100"
+                      value={nomination.speed}
+                      onChange={(e) => setNomination(n => ({ ...n, speed: Number(e.target.value) }))}
+                      className="w-full accent-amber-500"
+                    />
+                  </div>
+                )}
+
+                {isStorytellerMode && (
+                  <div className="space-y-1.5 pt-2 border-t border-stone-800">
+                    <span className="text-stone-300 font-semibold text-[11px] block">📜 Script personnalisé (JSON)</span>
+                    <textarea
+                      value={scriptJsonText}
+                      onChange={(e) => setScriptJsonText(e.target.value)}
+                      placeholder='[{"id":"_meta","name":"Mon script"},"washerwoman","chef","imp"]'
+                      className="w-full h-20 px-2 py-1 bg-stone-900 border border-stone-700 rounded-lg text-[10px] font-mono text-stone-200 focus:outline-none select-text"
+                    />
+                    <div className="flex gap-1.5">
+                      <label className="flex-1 text-center py-1 bg-stone-800 hover:bg-stone-700 border border-stone-600 rounded-lg text-[11px] text-stone-200 cursor-pointer">
+                        Choisir un fichier .json
+                        <input
+                          type="file"
+                          accept=".json,application/json"
+                          className="hidden"
+                          onChange={(e) => {
+                            const f = e.target.files && e.target.files[0];
+                            if (f) f.text().then(t => { setScriptJsonText(t); loadCustomScript(t); });
+                            e.target.value = '';
+                          }}
+                        />
+                      </label>
+                      <button onClick={() => loadCustomScript(scriptJsonText)} className="px-3 py-1 bg-amber-600 hover:bg-amber-500 text-stone-950 font-bold rounded-lg text-[11px]">Charger</button>
+                    </div>
+                    {scriptMsg && <p className="text-[10px] text-amber-300 leading-snug">{scriptMsg}</p>}
+                  </div>
+                )}
 
                 {isStorytellerMode && (
                   <div className="space-y-1.5 pt-2 border-t border-stone-800">
