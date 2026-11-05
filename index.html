@@ -205,18 +205,80 @@
       enabled: false, defaultProvider: 'claude',
       providers: {
         claude: { key: '', model: 'claude-sonnet-5-5' },
-        openai: { key: '', model: 'gpt-4o-mini' },
-        gemini: { key: '', model: 'gemini-2.0-flash' },
+        openai: { key: '', model: 'gpt-6.1-terra' },
+        gemini: { key: '', model: 'gemini-3.8-flash' },
         custom: { key: '', model: '', baseUrl: 'http://localhost:11434/v1' }
       },
       speakEvery: 25, maxMsgPerMin: 5, approveNominations: true, nightAuto: true,
       defenseSeconds: 0, maxParallel: 3, fullRoleList: true, learn: true, callBudget: 400
     };
+    // Modèles proposés (liste officielle consultée en novembre 2026) : le bouton « ↻ Modèles » récupère la liste réelle de ta clé
+    const MODEL_SUGGESTIONS = {
+      claude: [
+        { id: 'claude-sonnet-5-5', note: 'équilibré · recommandé' },
+        { id: 'claude-haiku-5-5', note: 'rapide et économique' },
+        { id: 'claude-opus-5-5', note: 'très performant' },
+        { id: 'claude-fable-5-1', note: 'palier supérieur' }
+      ],
+      openai: [
+        { id: 'gpt-6.1-terra', note: 'rapide et efficace · recommandé' },
+        { id: 'gpt-6-luna', note: 'le plus économique' },
+        { id: 'gpt-6.1-sol', note: 'quasi Astra, moins cher' },
+        { id: 'gpt-6-astra', note: 'le plus puissant' },
+        { id: 'gpt-6-sol', note: 'GPT-6 raisonnement poussé' },
+        { id: 'gpt-5.6-luna', note: 'GPT-5.6 économique' },
+        { id: 'gpt-5.6-terra', note: 'GPT-5.6 équilibré' },
+        { id: 'gpt-5.6-sol', note: 'GPT-5.6 haut de gamme' },
+        { id: 'gpt-5.5', note: 'GPT-5.5' },
+        { id: 'gpt-5.4-mini', note: 'petit modèle' },
+        { id: 'gpt-5.4', note: 'GPT-5.4' },
+        { id: 'gpt-5.2', note: 'GPT-5.2' }
+      ],
+      gemini: [
+        { id: 'gemini-3.8-flash', note: 'rapide · recommandé' },
+        { id: 'gemini-3.6-flash', note: 'rapide' },
+        { id: 'gemini-3.5-flash-lite', note: 'le plus économique' },
+        { id: 'gemini-3.1-pro-preview', note: 'raisonnement' },
+        { id: 'gemini-4-argon', note: 'le plus puissant' },
+        { id: 'gemini-flash-latest', note: 'alias : suit le dernier Flash' }
+      ],
+      custom: []
+    };
+    // Anciens modèles retirés : remplacés automatiquement par le défaut d'aujourd'hui
+    const DEPRECATED_MODEL = {
+      gemini: /^gemini-(1\.|2\.0)/,
+      openai: /^(gpt-3|gpt-4|gpt-5(-mini|-nano|-pro|-chat-latest)?$|gpt-5\.1|o1|o3|o4)/
+    };
+    const listModels = async ({ provider, key, baseUrl }) => {
+      let r, ids = [];
+      if (provider === 'gemini') {
+        r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=' + encodeURIComponent(key));
+        const d = await r.json();
+        if (!r.ok) throw new Error((d.error && d.error.message) || ('HTTP ' + r.status));
+        ids = (d.models || []).filter(m => (m.supportedGenerationMethods || []).includes('generateContent')).map(m => String(m.name).replace(/^models\//, ''));
+      } else if (provider === 'claude') {
+        r = await fetch('https://api.anthropic.com/v1/models?limit=100', { headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' } });
+        const d = await r.json();
+        if (!r.ok) throw new Error((d.error && d.error.message) || ('HTTP ' + r.status));
+        ids = (d.data || []).map(m => m.id);
+      } else {
+        const base = provider === 'openai' ? 'https://api.openai.com/v1' : String(baseUrl || '').replace(/\/$/, '');
+        r = await fetch(base + '/models', { headers: key ? { Authorization: 'Bearer ' + key } : {} });
+        const d = await r.json();
+        if (!r.ok) throw new Error((d.error && (d.error.message || d.error)) || ('HTTP ' + r.status));
+        ids = (d.data || []).map(m => m.id);
+        if (provider === 'openai') ids = ids.filter(id => /^(gpt-|o\d)/.test(id) && !/(image|audio|realtime|transcribe|tts|live|embed|moderation|whisper|search|codex|cyber)/.test(id));
+      }
+      return ids.sort().reverse();
+    };
     const loadAiCfg = () => {
       try {
         const s = JSON.parse(localStorage.getItem('botc_ai_cfg') || '{}');
         const providers = {};
-        Object.keys(AI_DEFAULT.providers).forEach(k => { providers[k] = { ...AI_DEFAULT.providers[k], ...((s.providers || {})[k] || {}) }; });
+        Object.keys(AI_DEFAULT.providers).forEach(k => {
+          providers[k] = { ...AI_DEFAULT.providers[k], ...((s.providers || {})[k] || {}) };
+          if (DEPRECATED_MODEL[k] && DEPRECATED_MODEL[k].test(providers[k].model || '')) providers[k].model = AI_DEFAULT.providers[k].model;
+        });
         return { ...AI_DEFAULT, ...s, providers };
       } catch (e) { return AI_DEFAULT; }
     };
@@ -274,7 +336,7 @@
           body: JSON.stringify({
             systemInstruction: { parts: [{ text: system }] },
             contents: [{ role: 'user', parts: [{ text: user }] }],
-            generationConfig: { maxOutputTokens: 2000, responseMimeType: 'application/json' }
+            generationConfig: { maxOutputTokens: 4000, responseMimeType: 'application/json' }
           })
         });
         const d = await r.json();
@@ -283,7 +345,7 @@
       }
       const base = provider === 'openai' ? 'https://api.openai.com/v1' : String(baseUrl || '').replace(/\/$/, '');
       const body = { model, messages: [{ role: 'system', content: system }, { role: 'user', content: user }] };
-      if (provider === 'openai') body.max_completion_tokens = 2000; else body.max_tokens = 900;
+      if (provider === 'openai') body.max_completion_tokens = 4000; else body.max_tokens = 900;
       r = await fetch(base + '/chat/completions', {
         method: 'POST',
         headers: Object.assign({ 'Content-Type': 'application/json' }, key ? { Authorization: 'Bearer ' + key } : {}),
@@ -627,6 +689,7 @@
       const [nightUnseen, setNightUnseen] = useState(0);
       const [infoDraft, setInfoDraft] = useState({});
       const [aiTest, setAiTest] = useState({});
+      const [aiModels, setAiModels] = useState({});
       const [pubInput, setPubInput] = useState('');
       const [voiceOn, setVoiceOn] = useState(false);
       const [nowTick, setNowTick] = useState(Date.now());
@@ -2311,12 +2374,40 @@
                               <input type="text" placeholder="URL de base (…/v1)" value={aiCfg.providers.custom.baseUrl} onChange={(e) => setAiCfg(c => ({ ...c, providers: { ...c.providers, custom: { ...c.providers.custom, baseUrl: e.target.value } } }))} className="w-full px-2 py-1 bg-stone-950 border border-stone-700 rounded-lg text-[11px] text-white focus:outline-none select-text" />
                             )}
                             <input type="password" autoComplete="off" placeholder="Clé API" value={aiCfg.providers[pid].key} onChange={(e) => setAiCfg(c => ({ ...c, providers: { ...c.providers, [pid]: { ...c.providers[pid], key: e.target.value } } }))} className="w-full px-2 py-1 bg-stone-950 border border-stone-700 rounded-lg text-[11px] text-white focus:outline-none select-text" />
-                            <input type="text" list={'models_' + pid} placeholder="Modèle" value={aiCfg.providers[pid].model} onChange={(e) => setAiCfg(c => ({ ...c, providers: { ...c.providers, [pid]: { ...c.providers[pid], model: e.target.value } } }))} className="w-full px-2 py-1 bg-stone-950 border border-stone-700 rounded-lg text-[11px] text-white focus:outline-none select-text" />
-                            <datalist id={'models_' + pid}>
-                              {(pid === 'claude' ? ['claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-opus-5-5', 'claude-fable-5-1'] : pid === 'openai' ? ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini', 'gpt-4.1'] : pid === 'gemini' ? ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-pro'] : []).map(m => <option key={m} value={m} />)}
-                            </datalist>
+                            {(() => {
+                              const known = MODEL_SUGGESTIONS[pid] || [];
+                              const extra = (aiModels[pid] || []).filter(id => !known.some(k => k.id === id));
+                              const cur = aiCfg.providers[pid].model;
+                              const inList = known.some(k => k.id === cur) || extra.includes(cur);
+                              const setModel = (m) => setAiCfg(c => ({ ...c, providers: { ...c.providers, [pid]: { ...c.providers[pid], model: m } } }));
+                              return (
+                                <>
+                                  <select value={inList ? cur : '__custom'} onChange={(e) => setModel(e.target.value === '__custom' ? '' : e.target.value)} className="w-full px-2 py-1 bg-stone-950 border border-stone-700 rounded-lg text-[11px] text-white focus:outline-none">
+                                    {known.map(k => <option key={k.id} value={k.id}>{k.id} — {k.note}</option>)}
+                                    {extra.length > 0 && <optgroup label="Disponibles sur ta clé">{extra.map(id => <option key={id} value={id}>{id}</option>)}</optgroup>}
+                                    <option value="__custom">✏️ Autre modèle (saisir)…</option>
+                                  </select>
+                                  {!inList && (
+                                    <input type="text" placeholder="Nom exact du modèle" value={cur} onChange={(e) => setModel(e.target.value)} className="w-full px-2 py-1 bg-stone-950 border border-stone-700 rounded-lg text-[11px] text-white focus:outline-none select-text" />
+                                  )}
+                                </>
+                              );
+                            })()}
                             <div className="flex items-center gap-2">
                               <button onClick={() => testProvider(pid)} className="px-2 py-1 bg-stone-800 hover:bg-stone-700 border border-stone-600 rounded-lg text-[11px] text-stone-200">Tester</button>
+                              <button
+                                onClick={async () => {
+                                  const pc = aiCfg.providers[pid];
+                                  setAiTest(t => ({ ...t, [pid]: '… récupération de la liste' }));
+                                  try {
+                                    const ids = await listModels({ provider: pid, key: pc.key, baseUrl: pc.baseUrl });
+                                    setAiModels(m => ({ ...m, [pid]: ids }));
+                                    setAiTest(t => ({ ...t, [pid]: '✔ ' + ids.length + ' modèles disponibles sur ta clé (dans la liste)' }));
+                                  } catch (e) { setAiTest(t => ({ ...t, [pid]: '✘ ' + String((e && e.message) || e) })); }
+                                }}
+                                className="px-2 py-1 bg-stone-800 hover:bg-stone-700 border border-stone-600 rounded-lg text-[11px] text-stone-200"
+                                title="Récupère la liste réelle des modèles accessibles avec ta clé"
+                              >↻ Modèles</button>
                               <span className={`text-[10px] ${String(aiTest[pid] || '').startsWith('✔') ? 'text-emerald-400' : 'text-amber-300'}`}>{aiTest[pid]}</span>
                             </div>
                           </div>
