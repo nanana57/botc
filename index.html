@@ -209,7 +209,7 @@
         gemini: { key: '', model: 'gemini-3.8-flash' },
         custom: { key: '', model: '', baseUrl: 'http://localhost:11434/v1' }
       },
-      speakEvery: 25, maxMsgPerMin: 5, approveNominations: true, nightAuto: true,
+      speakEvery: 12, maxMsgPerMin: 8, approveNominations: true, nightAuto: true,
       defenseSeconds: 0, maxParallel: 3, fullRoleList: true, learn: true, observe: true, callBudget: 400
     };
     // Modèles proposés (liste officielle consultée en novembre 2026) : le bouton « ↻ Modèles » récupère la liste réelle de ta clé
@@ -370,6 +370,59 @@
       const d = await r.json();
       if (!r.ok) throw new Error((d.error && (d.error.message || d.error)) || ('HTTP ' + r.status));
       return ((((d.choices || [])[0] || {}).message || {}).content) || '';
+    };
+
+
+    // ================= Mise en page adaptative, catalogue complet des rôles, minuteur =================
+    // Taille du cercle, du centre, des avatars et des jetons selon l'écran et le nombre de joueurs (aucun chevauchement avec le centre)
+    const computeLayout = (vp, count) => {
+      const n = Math.max(count, 3);
+      const circleD = Math.round(Math.max(260, Math.min(vp.w - 16, vp.h - 150)));
+      const centerD = Math.round(Math.max(120, Math.min(192, circleD * 0.3)));
+      const seatR = circleD * 0.42;
+      const chord = 2 * seatR * Math.sin(Math.PI / n);
+      const radial = (seatR - centerD / 2 - 10) * 2;
+      const seatPx = Math.round(Math.max(36, Math.min(112, chord * 0.8, (chord * 1.25 - 34) / 1.68, (radial - 34) / 1.68)));
+      const tokenPx = Math.round(Math.max(30, Math.min(76, seatPx * 0.68)));
+      const mjCamPx = Math.round(Math.max(72, Math.min(144, Math.min(vp.w, vp.h) * 0.16)));
+      return { circleD, centerD, seatPx, tokenPx, mjCamPx };
+    };
+
+    const normId = (s) => String(s).toLowerCase().replace(/[^a-z0-9]/g, '');
+    const CATALOG_URL = 'https://raw.githubusercontent.com/bra1n/townsquare/main/src/roles.json';
+    const BASE_EDITIONS = ['tb', 'bmr', 'snv'];
+    // Catalogue complet (base + expérimentaux) : mis en cache 7 jours dans le navigateur
+    const loadCatalog = async () => {
+      try {
+        const c = JSON.parse(localStorage.getItem('botc_catalog') || 'null');
+        if (c && c.roles && c.roles.length > 100 && Date.now() - c.ts < 7 * 86400000) return c.roles;
+      } catch (e) {}
+      const r = await fetch(CATALOG_URL);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const arr = await r.json();
+      const roles = arr.filter(x => x && x.id && ['townsfolk', 'outsider', 'minion', 'demon'].includes(x.team)).map(x => ({
+        id: x.id, name: x.name, team: x.team, edition: x.edition || '', ability: x.ability || '',
+        firstNight: x.firstNight || 0, otherNight: x.otherNight || 0, reminders: x.reminders || [],
+        nightNote: x.otherNightReminder || x.firstNightReminder || ''
+      }));
+      try { localStorage.setItem('botc_catalog', JSON.stringify({ ts: Date.now(), roles })); } catch (e) {}
+      return roles;
+    };
+    const catalogToRole = (x) => ({
+      id: x.id, name: x.name, team: x.team, icon: '✨', cdnIcon: x.image || `${BOTC_ICON_CDN}${x.id}.png`,
+      firstNight: x.firstNight || 0, otherNight: x.otherNight || 0, ability: x.ability || '',
+      reminders: x.reminders || [], wiki: { howToRun: x.nightNote || '', tips: '' }
+    });
+
+    // Minuteur à la seconde près : "4:30", "90", "1m20", "5m"
+    const parseTimer = (str) => {
+      const s = String(str || '').trim().toLowerCase();
+      if (!s) return null;
+      let m = s.match(/^(\d+):(\d{1,2})$/);
+      if (m) return Number(m[1]) * 60 + Number(m[2]);
+      m = s.match(/^(?:(\d+)\s*m(?:in)?)?\s*(?:(\d+)\s*s?)?$/);
+      if (m && (m[1] || m[2])) return Number(m[1] || 0) * 60 + Number(m[2] || 0);
+      return null;
     };
 
     // ==========================================
@@ -614,7 +667,7 @@
           }, 1000);
         } else if (dayTimerSeconds === 0 && isTimerRunning) {
           setIsTimerRunning(false);
-          playSound('gavel');
+          if (isStorytellerMode) ringGong();
         }
         return () => clearInterval(interval);
       }, [phase, isTimerRunning, dayTimerSeconds]);
@@ -709,6 +762,19 @@
       const [pubInput, setPubInput] = useState('');
       const [voiceOn, setVoiceOn] = useState(false);
       const [nowTick, setNowTick] = useState(Date.now());
+      const [creatorOpen, setCreatorOpen] = useState(false);
+      const [creatorName, setCreatorName] = useState('Mon script');
+      const [creatorAuthor, setCreatorAuthor] = useState('');
+      const [creatorSel, setCreatorSel] = useState([]);
+      const [creatorTeam, setCreatorTeam] = useState('all');
+      const [creatorEd, setCreatorEd] = useState('all');
+      const [creatorSearch, setCreatorSearch] = useState('');
+      const [catalog, setCatalog] = useState(null);
+      const [catalogMsg, setCatalogMsg] = useState('');
+      const [savedScripts, setSavedScripts] = useState(() => { try { return JSON.parse(localStorage.getItem('botc_scripts') || '[]'); } catch (e) { return []; } });
+      const [timerInput, setTimerInput] = useState('');
+      const [gongUntil, setGongUntil] = useState(0);
+      const lastGongTs = useRef(0);
       const [hands, setHands] = useState({});        // mains levées : { clé joueur : horodatage }
       const [speaker, setSpeaker] = useState(null);  // qui a la parole : { id, name, ts }
       const [ttsOn, setTtsOn] = useState(true);
@@ -719,7 +785,8 @@
         nextSpeak: 0, lastSpoke: {}, botMsgTimes: [], queue: [], noms: { by: {}, on: {} },
         prevAlive: null, nomKey: null, nomResKey: null, votesAsked: null, pendingVotes: {}, voteWaitSince: 0,
         calls: 0, errStreak: 0, phaseTag: null, learnedFor: null,
-        pq: [], lastPriv: {}, sinceObserve: 0, speakerDone: 0, removed: {}, botInvSeen: {}
+        pq: [], lastPriv: {}, sinceObserve: 0, speakerDone: 0, removed: {}, botInvSeen: {},
+        dayStart: 0, chain: 0, lastAnyMsg: 0, lastMsg: null, saying: false
       });
       useEffect(() => { saveAiCfg(aiCfg); }, [aiCfg]);
       const [cottageChatMessages, setCottageChatMessages] = useState([]);
@@ -955,6 +1022,22 @@
             gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.08);
             osc.start();
             osc.stop(ctx.currentTime + 0.09);
+          } else if (type === 'gong') {
+            const t0 = ctx.currentTime;
+            [[98, 0.35, 4.5], [147, 0.22, 4], [196, 0.18, 3.5], [262, 0.1, 3], [415, 0.07, 2.2]].forEach(([f, g, d]) => {
+              const o = ctx.createOscillator();
+              const gn = ctx.createGain();
+              o.type = 'sine';
+              o.frequency.setValueAtTime(f, t0);
+              o.frequency.exponentialRampToValueAtTime(f * 0.985, t0 + d);
+              gn.gain.setValueAtTime(0.0001, t0);
+              gn.gain.exponentialRampToValueAtTime(g, t0 + 0.02);
+              gn.gain.exponentialRampToValueAtTime(0.0001, t0 + d);
+              o.connect(gn);
+              gn.connect(ctx.destination);
+              o.start(t0);
+              o.stop(t0 + d + 0.05);
+            });
           } else if (type === 'gavel') {
             osc.type = 'sawtooth';
             osc.frequency.setValueAtTime(130, ctx.currentTime);
@@ -1037,6 +1120,12 @@
             setHands(prev => keep(prev, data.hands || {}));
             setSpeaker(prev => keep(prev, data.speaker || null));
           }
+          // Gong : tout le monde l'entend, quel que soit son salon
+          const gg = data.gong;
+          if (gg && gg.ts && gg.ts !== lastGongTs.current) {
+            lastGongTs.current = gg.ts;
+            if (!isStorytellerMode && Date.now() - gg.ts < 20000) { playSound('gong'); setGongUntil(Date.now() + 12000); }
+          }
           // Le Conteur accepte à la place des bots les invitations en aparté qui leur sont faites
           if (isStorytellerMode) {
             Object.entries(data.invites || {}).forEach(([k, inv]) => {
@@ -1099,6 +1188,21 @@
       };
       broadcastRef.current = broadcastGameState;
 
+      // Gong pour tout le monde (fin du temps : retour à la Place du village)
+      const ringGong = () => {
+        const g = { ts: Date.now() };
+        lastGongTs.current = g.ts;
+        playSound('gong');
+        setGongUntil(Date.now() + 12000);
+        if (roomCode) fb.put(roomCode, 'gong', g);
+      };
+      // Minuteur réglable à la seconde près (synchronisé tout de suite chez les joueurs)
+      const syncTimer = (sec, running) => { if (roomCode) firebaseSync.updateRoom(roomCode, { dayTimerSeconds: sec, isTimerRunning: running, timerAt: Date.now() }); };
+      const setTimerTo = (sec) => { const v = Math.max(0, Math.round(sec)); setDayTimerSeconds(v); syncTimer(v, isTimerRunning); };
+      const adjustTimer = (d) => setTimerTo(dayTimerSeconds + d);
+      const toggleTimerRun = () => { const r = !isTimerRunning; setIsTimerRunning(r); syncTimer(dayTimerSeconds, r); };
+      const applyTimerInput = () => { const v = parseTimer(timerInput); if (v === null) return; setTimerTo(v); setTimerInput(''); };
+
       // Marque d'exécution posée / retirée à la main par le Conteur (en plus de celle qui vient des votes)
       const toggleBlock = (p) => {
         const next = onTheBlock && onTheBlock.playerId === p.id ? null : { playerId: p.id, playerName: p.name, votes: 0 };
@@ -1114,34 +1218,101 @@
         broadcastGameState(updated);
       };
 
-      // Script personnalisé au format JSON (ex. export de l'éditeur officiel) : on garde les rôles reconnus
-      const loadCustomScript = (text) => {
+      // ---- Scripts personnalisés : import JSON + créateur (100 % des rôles, expérimentaux compris) ----
+      const ensureCatalog = async () => {
+        if (catalog) return catalog;
+        try {
+          const c = await loadCatalog();
+          setCatalog(c);
+          setCatalogMsg(`✔ catalogue complet chargé : ${c.length} rôles`);
+          return c;
+        } catch (e) {
+          setCatalogMsg('⚠ catalogue en ligne indisponible (' + ((e && e.message) || e) + ') : rôles locaux uniquement');
+          return null;
+        }
+      };
+      // Tous les rôles disponibles, indexés par identifiant normalisé : base locale (en français) + catalogue complet
+      const allRoleEntries = (cat = catalog) => {
+        const byNorm = {};
+        Object.values(ROLES_DB).forEach(r => { byNorm[normId(r.id)] = { ...r, local: true }; });
+        (cat || []).forEach(x => {
+          const k = normId(x.id);
+          if (byNorm[k]) byNorm[k].edition = x.edition;
+          else byNorm[k] = { ...catalogToRole(x), edition: x.edition, local: false };
+        });
+        return byNorm;
+      };
+      const isBaseRole = (e) => e.edition !== undefined && e.edition !== null && e.edition !== ''
+        ? BASE_EDITIONS.includes(e.edition)
+        : ['tb', 'bmr', 'snv'].some(k => SCRIPTS_DATA[k] && SCRIPTS_DATA[k].roles.includes(e.id));
+      // Construit un script : les rôles absents de la base locale sont embarqués dans le script (synchronisés avec les joueurs)
+      const buildScript = (name, author, ids, homebrew = {}, cat = catalog) => {
+        const all = allRoleEntries(cat);
+        const extra = {};
+        const roles = [];
+        ids.forEach(id => {
+          const hb = homebrew[id];
+          const e = hb ? null : all[normId(id)];
+          if (hb) { extra[id] = hb; if (!roles.includes(id)) roles.push(id); }
+          else if (e && e.local) { if (!roles.includes(e.id)) roles.push(e.id); }
+          else if (e) {
+            const { local, edition, ...role } = e;
+            extra[e.id] = role;
+            if (!roles.includes(e.id)) roles.push(e.id);
+          }
+        });
+        return { id: 'custom', name: name || 'Script personnalisé', desc: author ? 'Par ' + author : 'Script personnalisé', author: author || '', roles, extra };
+      };
+      const applyScript = (script) => {
+        Object.keys(script.extra || {}).forEach(k => { if (!ROLES_DB[k]) ROLES_DB[k] = script.extra[k]; });
+        setCustomScript(script);
+        setSelectedScriptId('custom');
+        broadcastGameState(playersRef.current, phase, gameStarted, { selectedScriptId: 'custom', customScript: script });
+        playSound('bell');
+      };
+      const loadCustomScript = async (text) => {
         try {
           const data = JSON.parse(text);
           const arr = Array.isArray(data) ? data : (data.roles || []);
           const meta = arr.find(x => x && typeof x === 'object' && x.id === '_meta') || {};
-          const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]/g, '');
-          const byNorm = {};
-          Object.keys(ROLES_DB).forEach(k => { byNorm[norm(k)] = k; });
+          const cat = await ensureCatalog();
+          const all = allRoleEntries(cat);
           const ids = [];
+          const homebrew = {};
           const unknown = [];
           arr.forEach(x => {
             const raw = typeof x === 'string' ? x : (x && x.id);
             if (!raw || raw === '_meta') return;
-            const k = byNorm[norm(raw)];
-            if (k) { if (!ids.includes(k)) ids.push(k); } else unknown.push(raw);
+            if (all[normId(raw)]) { ids.push(raw); return; }
+            if (x && typeof x === 'object' && x.name && ['townsfolk', 'outsider', 'minion', 'demon'].includes(x.team)) {
+              homebrew[raw] = catalogToRole({ id: raw, name: x.name, team: x.team, ability: x.ability, image: x.image, firstNight: x.firstNight, otherNight: x.otherNight, reminders: x.reminders });
+              ids.push(raw);
+            } else unknown.push(raw);
           });
           if (ids.length === 0) throw new Error('aucun rôle reconnu');
-          const script = { id: 'custom', name: meta.name || 'Script personnalisé', desc: meta.author ? 'Par ' + meta.author : 'Script importé (JSON)', roles: ids };
-          setCustomScript(script);
-          setSelectedScriptId('custom');
-          broadcastGameState(playersRef.current, phase, gameStarted, { selectedScriptId: 'custom', customScript: script });
-          setScriptMsg(`✔ « ${script.name} » chargé : ${ids.length} rôles` + (unknown.length ? ` (ignorés : ${unknown.join(', ')})` : ''));
-          playSound('bell');
+          const script = buildScript(meta.name, meta.author, ids, homebrew, cat);
+          applyScript(script);
+          setScriptMsg(`✔ « ${script.name} » chargé : ${script.roles.length} rôles` + (unknown.length ? ` (ignorés : ${unknown.join(', ')})` : ''));
         } catch (e) {
           setScriptMsg('✘ JSON invalide : ' + e.message);
         }
       };
+      const persistScripts = (list) => { setSavedScripts(list); try { localStorage.setItem('botc_scripts', JSON.stringify(list)); } catch (e) {} };
+      const saveCreatorScript = () => {
+        const script = buildScript(creatorName.trim() || 'Mon script', creatorAuthor.trim(), creatorSel);
+        persistScripts([{ ...script, ts: Date.now() }, ...savedScripts.filter(x => x.name !== script.name)].slice(0, 40));
+        setScriptMsg(`✔ « ${script.name} » enregistré (${script.roles.length} rôles)`);
+      };
+      const loadSavedScript = (sc) => {
+        Object.keys(sc.extra || {}).forEach(k => { if (!ROLES_DB[k]) ROLES_DB[k] = sc.extra[k]; });
+        setCreatorName(sc.name);
+        setCreatorAuthor(sc.author || '');
+        setCreatorSel(sc.roles || []);
+      };
+      const creatorJson = () => JSON.stringify([
+        { id: '_meta', name: creatorName || 'Mon script', author: creatorAuthor || '' },
+        ...creatorSel.map(id => String(id).replace(/_/g, ''))
+      ], null, 2);
 
       // Minuteur du jour synchronisé (marche/pause)
       useEffect(() => {
@@ -1308,6 +1479,7 @@
       };
 
       // --- QUOTAS OFFICIELS BOTC ---
+      if (customScript && customScript.extra) Object.keys(customScript.extra).forEach(k => { if (!ROLES_DB[k]) ROLES_DB[k] = customScript.extra[k]; });
       const currentScript = (selectedScriptId === 'custom' && customScript) ? customScript : (SCRIPTS_DATA[selectedScriptId] || SCRIPTS_DATA.tb);
       const officialQuota = PLAYER_DISTRIBUTION[players.length] || null;
 
@@ -1699,16 +1871,18 @@
           `Tu es « ${bot.name} », joueur de Blood on the Clocktower (jeu de déduction sociale) dans une partie en ligne avec des humains et d'autres joueurs. Tu joues réellement pour gagner avec ton camp.`,
           `Personnalité : ${meta.pers.desc}`,
           `Règles essentielles : le Bien (Villageois + Étrangers) gagne en exécutant le Démon ; le Mal (Démon + Sbires) gagne s'il ne reste que 2 joueurs vivants. Le jour on discute, on accuse (un joueur ne peut accuser qu'une fois par jour et ne peut être accusé qu'une fois par jour), puis on vote : il faut au moins la moitié des vivants pour mettre un accusé sur le billot ; celui qui a le plus de votes est exécuté. Les morts parlent encore et ont un seul vote de fantôme. La nuit, le Conteur donne leurs informations aux rôles. Une information peut être fausse si son détenteur est empoisonné ou ivre.`,
+          `Conversation naturelle : quand quelqu'un vient de parler, réponds-lui (cite son prénom), approuve, conteste, relance. Ne répète jamais ce qui a déjà été dit et évite les phrases génériques : sois précis (rôle, nuit, résultat, nom).`,
           evil
-            ? `Tu es dans le camp du MAL. Mens avec cohérence : choisis un rôle de bluff crédible parmi ceux du script (jamais un rôle déjà revendiqué par quelqu'un de sûr), fabrique des informations plausibles, sème le doute sur les bons joueurs, ne défends pas trop ouvertement tes alliés, sacrifie un Sbire si nécessaire. Le Démon reste discret ; les Sbires protègent le Démon et peuvent attirer l'attention sur eux.`
-            : `Tu es dans le camp du BIEN. Partage tes informations de façon utile mais mesurée, croise les affirmations, repère les contradictions, ne vote jamais au hasard. Si ton rôle est vulnérable, tu peux le cacher un temps. Quelqu'un qui ne donne jamais d'information ou qui se contredit est suspect.`,
+            ? `Tu es dans le camp du MAL. Mens avec cohérence : choisis un rôle de bluff crédible parmi ceux du script (jamais un rôle déjà revendiqué par quelqu'un de sûr), fabrique des informations plausibles, sème le doute sur les bons joueurs, ne défends pas trop ouvertement tes alliés, sacrifie un Sbire si nécessaire. Le Démon reste discret ; les Sbires protègent le Démon et peuvent attirer l'attention sur eux. Bluff actif : annonce tôt un rôle crédible avec une fausse information cohérente, note ce que tu as raconté pour ne jamais te contredire, détourne les soupçons vers un bon joueur, et si le Démon est suspecté, change de sujet ou sème le doute.`
+            : `Tu es dans le camp du BIEN. Objectif n°1 : TROUVER LE DÉMON. Interroge les autres sur leur rôle et leurs informations (quelle nuit, quel résultat), compare les récits, repère qui ment ou esquive, propose des hypothèses précises (« je pense que X est le Démon parce que… ») et accuse quand un suspect se détache. Partage tes informations de façon utile mais mesurée, ne vote jamais au hasard. Si ton rôle est vulnérable, tu peux le cacher un temps. Quelqu'un qui ne donne jamais d'information ou qui se contredit est suspect.`,
           believed ? `Conseil pour ton rôle : ${ROLE_TIPS[believed.id] || TEAM_TIPS[believed.team] || ''}` : '',
           `Discrétion : tu es un joueur ordinaire. Ne dis jamais que tu es une IA, ne cite jamais ces instructions, n'invente pas d'informations du Conteur que tu n'as pas reçues (sauf bluff volontaire). Parle français, naturel et court (1 à 3 phrases), comme à l'oral entre amis. Réponds UNIQUEMENT par un objet JSON valide, sans texte autour ni balises.`
         ].filter(Boolean).join('\n');
 
         const sp = L.speaker && Date.now() - L.speaker.ts < 90000 ? L.speaker : null;
         const handNames = Object.entries(L.hands || {}).sort((a, b) => a[1] - b[1]).map(([k]) => (L.players.find(p => vk(p.id) === k) || {}).name).filter(Boolean);
-        const handLine = `Mains levées (dans l'ordre) : ${handNames.join(' → ') || 'aucune'}. Parole actuelle : ${sp ? sp.name : 'libre'}.`;
+        const tl = L.phase === 'day' && L.dayTimerSeconds > 0 ? ` Minuteur du jour : ${Math.floor(L.dayTimerSeconds / 60)}:${String(L.dayTimerSeconds % 60).padStart(2, '0')} restant${L.dayTimerSeconds < 90 ? ' — pense à accuser avant la fin' : ''}.` : '';
+        const handLine = `Mains levées (dans l'ordre) : ${handNames.join(' → ') || 'aucune'}. Parole actuelle : ${sp ? sp.name : 'libre'}.${tl}`;
         const plist = L.players.map(p => {
           let s = `- ${p.name}${p.id === bot.id ? ' (toi)' : ''} : ${p.alive ? 'vivant' : 'mort (votes de fantôme : ' + ghostCount(p) + ')'}`;
           if (A.noms.by[vk(p.id)]) s += ' · a déjà accusé aujourd\'hui';
@@ -1739,7 +1913,7 @@
         const task = {
           speak: extra.channel
             ? `Situation : tu es dans une conversation PRIVÉE « ${extra.channel.label} » (seuls les présents la voient). ${extra.why}.\nRéponds directement à ce qu'on vient de te dire, en restant dans ton rôle (1 à 3 phrases). Si rien ne mérite de réponse, "silent".\nJSON : {"action":"say|silent","text":"ta réponse (vide si silent)","notes":"${NOTES_HINT}"}`
-            : `Situation : ${extra.why || 'tu peux prendre la parole si c\'est pertinent'}.\nDécide si tu parles maintenant. Actions possibles : "say" (dire quelque chose au village), "nominate" (accuser un joueur vivant — seulement si pertinent, si tu es vivant et si tu n'as pas déjà accusé aujourd'hui), "raise" (lever la main pour demander la parole : préfère-le à couper quelqu'un quand plusieurs personnes parlent ou que la parole est donnée à un autre), "silent" (ne rien dire : ne force pas la conversation).\nJSON : {"action":"say|nominate|raise|silent","text":"ta phrase (vide si silent ou raise)","target":"nom exact du joueur accusé (si nominate)","notes":"${NOTES_HINT}"}`,
+            : `Situation : ${extra.why || 'tu peux prendre la parole si c\'est pertinent'}.\nDécide si tu parles maintenant. Actions possibles : "say" (dire quelque chose au village), "nominate" (accuser un joueur vivant — seulement si pertinent, si tu es vivant et si tu n'as pas déjà accusé aujourd'hui), "raise" (lever la main pour demander la parole : préfère-le à couper quelqu'un quand plusieurs personnes parlent ou que la parole est donnée à un autre), "silent" (seulement si tu viens de parler à l'instant ou si tu n'as vraiment rien à ajouter).${extra.force ? ' IMPORTANT : tu DOIS prendre la parole maintenant ("say", ou "nominate" si tu as un vrai soupçon), pas "silent".' : ''}\nJSON : {"action":"say|nominate|raise|silent","text":"ta phrase (vide si silent ou raise)","target":"nom exact du joueur accusé (si nominate)","notes":"${NOTES_HINT}"}`,
           observe: `Situation : tu écoutes la conversation sans parler. Analyse ce qui vient d'être dit : qui revendique quoi, qui se contredit, qui protège ou accuse qui, ce que cela t'apprend (y compris sur la façon de jouer des humains).${evil ? ' Prépare ton bluff et tes futures cibles.' : ''}\nJSON : {"notes":"${NOTES_HINT}","bluff":"rôle ou stratégie de bluff si tu es dans le Mal (sinon vide)"}`,
           night: `Situation : c'est la nuit ${L.dayNumber}. Si ton rôle agit la nuit et demande un choix (cible), choisis-le de façon stratégique ; sinon laisse "targets" vide. Prépare aussi ce que tu raconteras demain (quel rôle annoncer, quelle information partager ou cacher).\nJSON : {"targets":["nom exact"],"plan":"ce que tu comptes dire / rôle que tu vas annoncer","reasoning":"raison courte pour le Conteur","notes":"${NOTES_HINT}"}`,
           vote: `Situation : ${extra.nominator} accuse ${extra.nominee}. Il faut ${L.majorityRequired} votes. Tu es ${bot.alive ? 'vivant' : 'mort (ton vote de fantôme est unique, ne le gaspille que s\'il est décisif)'}.\nDécide si tu votes OUI pour mettre ${extra.nominee} sur le billot.\nJSON : {"vote":true,"text":"phrase très courte à dire en votant (vide sinon)","notes":"${NOTES_HINT}"}`,
@@ -1822,12 +1996,15 @@
         else startNomination(acc);
       };
 
-      const botSay = async (bot, why) => {
-        const res = await askBot(bot, 'speak', { why });
-        if (!res) return;
-        if (res.action === 'raise') setHand(bot.id, true);
-        else if (res.action === 'nominate' && res.target) botNominate(bot, res.target, res.text);
-        else if (res.action === 'say' && res.text) botSpeak(bot, res.text);
+      const botSay = async (bot, why, force) => {
+        A.saying = true;
+        try {
+          const res = await askBot(bot, 'speak', { why, force });
+          if (!res) return;
+          if (res.action === 'raise') setHand(bot.id, true);
+          else if (res.action === 'nominate' && res.target) botNominate(bot, res.target, res.text);
+          else if (res.action === 'say' && res.text) botSpeak(bot, res.text);
+        } finally { A.saying = false; }
       };
 
       // Réponse d'un bot dans une conversation privée (cottage, aparté, message direct) : bulle + chat
@@ -1927,13 +2104,16 @@
           if (m.thread === 'pub') {
             logPub(`${m.from} : ${m.text}`);
             A.sinceObserve++;
+            A.lastAnyMsg = Date.now();
+            A.lastMsg = { from: m.from, fromId: m.fromId, text: m.text };
+            if (m.bot) A.chain++; else A.chain = 0;
             if (!cfg.enabled || L.phase !== 'day' || !L.gameStarted) return;
             const low = String(m.text).toLowerCase();
             const boost = low.includes('?') ? 1.6 : 1;
             activeBots().forEach(b => {
               if (vk(b.id) === m.fromId || A.queue.length >= 6) return;
               const named = low.includes(b.name.toLowerCase());
-              const chance = (m.bot ? 0.12 : 0.3) * metaOf(b).talk * 2 * boost;
+              const chance = (m.bot ? 0 : 0.3) * metaOf(b).talk * 2 * boost;
               if (named || Math.random() < chance) {
                 A.queue.push({ id: b.id, at: Date.now() + (named ? 1500 : 3500) + Math.random() * 3000, why: named ? `${m.from} s'adresse à toi : « ${m.text} »` : `${m.from} vient de dire : « ${m.text} »` });
               }
@@ -2000,7 +2180,19 @@
         const tag = phase + dayNumber;
         if (A.phaseTag === tag) return;
         A.phaseTag = tag;
-        if (phase === 'day') { A.noms = { by: {}, on: {} }; logPub('Le jour se lève.'); }
+        if (phase === 'day') {
+          A.noms = { by: {}, on: {} };
+          logPub('Le jour se lève.');
+          const t0 = Date.now();
+          A.dayStart = t0; A.chain = 0; A.lastAnyMsg = 0; A.lastMsg = null; A.nextSpeak = t0 + 25000;
+          if (aiCfgRef.current.enabled) {
+            const first = dayNumber <= 2;
+            const why = first
+              ? "c'est le tout début de la partie : le village se découvre. Lance la discussion naturellement : annonce ton rôle ou ton information si c'est dans ton intérêt (ou bluffe si tu es dans le Mal), pose une question aux autres, ou propose une première hypothèse sur l'identité du Démon"
+              : "un nouveau jour se lève : réagis à la nuit (qui est mort ?), partage tes informations, interroge les autres, avance une hypothèse sur le Démon, et défends-toi si on te soupçonne";
+            activeBots().sort(() => Math.random() - 0.5).forEach((b, i) => A.queue.push({ id: b.id, at: t0 + 2500 + i * (5000 + Math.random() * 3500), why, force: true }));
+          }
+        }
         else { logPub('La nuit tombe.'); if (aiCfgRef.current.enabled && aiCfgRef.current.nightAuto) runNight(); }
       }, [phase, dayNumber, gameStarted]);
 
@@ -2045,7 +2237,7 @@
           if (sb && metaOf(sb).enabled) { A.speakerDone = sp.ts; botSay(sb, 'le Conteur te donne la parole : exprime-toi (information, avis, accusation…)'); return; }
         }
         A.botMsgTimes = A.botMsgTimes.filter(t => now - t < 60000);
-        if (A.botMsgTimes.length >= (cfg.maxMsgPerMin || 5)) return;
+        if (A.botMsgTimes.length >= Math.max(cfg.maxMsgPerMin || 5, 7)) return;
         const ok = (b) => metaOf(b).enabled && now - (A.lastSpoke[vk(b.id)] || 0) > 8000;
         // Quelqu'un d'autre a la parole : un bot lève la main au lieu de couper
         const holdBack = (b) => { if (sp && sp.id !== vk(b.id)) { if (!(L.hands || {})[vk(b.id)]) setHand(b.id, true); return true; } return false; };
@@ -2054,7 +2246,7 @@
         if (di >= 0) {
           const q = A.queue.splice(di, 1)[0];
           const b = botById(q.id);
-          if (b && ok(b) && !holdBack(b)) botSay(b, q.why);
+          if (b && ok(b) && !holdBack(b)) botSay(b, q.why, q.force);
           return;
         }
         // 4. écoute silencieuse : les bots analysent la conversation
@@ -2063,16 +2255,34 @@
           activeBots().sort(() => Math.random() - 0.5).slice(0, 2).forEach(runObserve);
           return;
         }
-        // 5. prise de parole spontanée
-        if (now >= A.nextSpeak) {
-          A.nextSpeak = now + cfg.speakEvery * 1000 * (0.6 + Math.random() * 0.8);
-          const pool = activeBots().filter(ok).map(b => ({ b, w: metaOf(b).talk * (b.alive ? 1 : 0.4) * (0.2 + Math.min(1, (now - (A.lastSpoke[vk(b.id)] || 0)) / 40000)) }));
-          const total = pool.reduce((s, x) => s + x.w, 0);
-          if (!total) return;
+        if (A.saying) return;
+        const weighted = (list) => {
+          const pool = list.map(b => ({ b, w: metaOf(b).talk * (b.alive ? 1 : 0.4) * (0.2 + Math.min(1, (now - (A.lastSpoke[vk(b.id)] || 0)) / 40000)) }));
+          const total = pool.reduce((sum, x) => sum + x.w, 0);
+          if (!total) return null;
           let r = Math.random() * total;
-          const pick = pool.find(x => (r -= x.w) <= 0) || pool[0];
-          if (holdBack(pick.b)) return;
-          botSay(pick.b, 'personne ne te parle en particulier : à toi de voir si tu veux relancer la discussion, partager une information, donner un avis ou accuser');
+          return (pool.find(x => (r -= x.w) <= 0) || pool[0]).b;
+        };
+        const quiet = now - (A.lastAnyMsg || A.dayStart || 0);
+        // 5. conversation naturelle : un autre joueur répond au dernier message (bots entre eux, ou bot qui répond à un humain)
+        if (A.lastMsg && quiet > 4500 && A.chain < 6) {
+          const pick = weighted(activeBots().filter(b => ok(b) && vk(b.id) !== A.lastMsg.fromId));
+          if (pick) {
+            if (!holdBack(pick)) {
+              A.lastAnyMsg = now + 3000;
+              botSay(pick, `${A.lastMsg.from} vient de dire : « ${A.lastMsg.text} » — réponds-lui naturellement (cite son prénom) : approuve, conteste, questionne ou apporte un fait nouveau`);
+            }
+            return;
+          }
+        }
+        if (A.chain >= 6 && quiet > 25000) A.chain = 0;
+        // 6. relance spontanée quand le village se tait
+        if (quiet > 12000 && now >= A.nextSpeak) {
+          A.nextSpeak = now + cfg.speakEvery * 1000 * (0.6 + Math.random() * 0.8);
+          const pick = weighted(activeBots().filter(ok));
+          if (!pick || holdBack(pick)) return;
+          A.lastAnyMsg = now + 3000;
+          botSay(pick, 'le village est silencieux : relance la discussion (partage une information, pose une question précise, donne un avis sur un suspect, ou accuse)', true);
         }
       };
       useEffect(() => {
@@ -2274,7 +2484,18 @@
       const majorityRequired = Math.ceil(aliveCount / 2);
 
       // ==========================================
-      live.current = { players, phase, dayNumber, nomination, onTheBlock, gameStarted, demonBluffs, storyteller, currentScript, hands, speaker, majorityRequired: Math.ceil(players.filter(p => p.alive).length / 2) };
+      live.current = { players, phase, dayNumber, nomination, onTheBlock, gameStarted, demonBluffs, storyteller, currentScript, hands, speaker, dayTimerSeconds, majorityRequired: Math.ceil(players.filter(p => p.alive).length / 2) };
+
+      // Mise en page adaptative + ordre de réveil de la nuit (Conteur) + caméra du Conteur visible seulement dans son salon
+      const layout = computeLayout(vp, players.length);
+      const hostCamVisible = locOf(hostKey) === locOf(myPeerId);
+      const nightKey = dayNumber <= 1 ? 'firstNight' : 'otherNight';
+      const nightRanks = {};
+      if (phase === 'night' && isStorytellerMode) {
+        players.filter(p => p.role && ROLES_DB[p.role] && ROLES_DB[p.role][nightKey] > 0)
+          .sort((a, b) => ROLES_DB[a.role][nightKey] - ROLES_DB[b.role][nightKey])
+          .forEach((p, i) => { nightRanks[p.id] = i + 1; });
+      }
 
       // RENDU 1 : ÉCRAN DE CONNEXION / LOBBY
       // ==========================================
@@ -2729,6 +2950,111 @@
             </div>
           )}
 
+          {/* BANNIÈRE DU GONG : retour à la Place du village */}
+          {nowTick < gongUntil && (
+            <div className="fixed top-14 left-1/2 -translate-x-1/2 z-[70] bg-amber-500 text-stone-950 border-4 border-amber-200 rounded-2xl px-5 py-3 shadow-2xl flex items-center gap-3 animate-pulse">
+              <span className="text-3xl">🔔</span>
+              <div className="font-black text-sm leading-tight">Fin du temps !<br /><span className="font-semibold text-xs">Retournez sur la Place du village</span></div>
+              {!isStorytellerMode && myPlayer && myPlayer.inRoom !== 'square' && (
+                <button onClick={() => { changeUserRoom('square'); setGongUntil(0); }} className="px-2.5 py-1 bg-stone-950 text-amber-300 rounded-lg text-xs font-bold">J'y vais</button>
+              )}
+            </div>
+          )}
+
+          {/* CRÉATEUR DE SCRIPTS : 100 % des personnages, expérimentaux compris */}
+          {creatorOpen && isStorytellerMode && (() => {
+            const all = Object.values(allRoleEntries());
+            const TEAMS = [['all', 'Tous'], ['townsfolk', 'Villageois'], ['outsider', 'Étrangers'], ['minion', 'Sbires'], ['demon', 'Démons']];
+            const q = normId(creatorSearch);
+            const list = all
+              .filter(r => ['townsfolk', 'outsider', 'minion', 'demon'].includes(r.team))
+              .filter(r => creatorTeam === 'all' || r.team === creatorTeam)
+              .filter(r => creatorEd === 'all' || (creatorEd === 'base' ? isBaseRole(r) : !isBaseRole(r)))
+              .filter(r => !q || normId(r.name).includes(q) || normId(r.id).includes(q))
+              .sort((a, b) => (['townsfolk', 'outsider', 'minion', 'demon'].indexOf(a.team) - ['townsfolk', 'outsider', 'minion', 'demon'].indexOf(b.team)) || a.name.localeCompare(b.name));
+            const teamOf2 = (id) => (all.find(r => r.id === id) || {}).team;
+            const count = (t) => creatorSel.filter(id => teamOf2(id) === t).length;
+            const toggle = (id) => setCreatorSel(sel => sel.includes(id) ? sel.filter(x => x !== id) : [...sel, id]);
+            return (
+              <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 z-[60] animate-fade-in">
+                <div className="bg-stone-950 border-2 border-indigo-500 rounded-3xl max-w-5xl w-full h-[90vh] flex flex-col shadow-2xl">
+                  <div className="flex items-center justify-between px-4 py-2.5 border-b border-stone-800">
+                    <h3 className="font-serif font-bold text-base text-indigo-300">🛠️ Créateur de scripts <span className="text-[11px] text-stone-500 font-mono">{all.length} rôles disponibles</span></h3>
+                    <button onClick={() => setCreatorOpen(false)} className="text-stone-400 hover:text-white"><Icon name="X" className="w-4 h-4" /></button>
+                  </div>
+
+                  <div className="px-4 py-2 border-b border-stone-800 space-y-2 text-xs">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input type="text" value={creatorName} onChange={(e) => setCreatorName(e.target.value)} placeholder="Nom du script" className="px-2 py-1 bg-stone-900 border border-stone-700 rounded-lg text-white w-44 focus:outline-none select-text" />
+                      <input type="text" value={creatorAuthor} onChange={(e) => setCreatorAuthor(e.target.value)} placeholder="Auteur" className="px-2 py-1 bg-stone-900 border border-stone-700 rounded-lg text-white w-32 focus:outline-none select-text" />
+                      <input type="text" value={creatorSearch} onChange={(e) => setCreatorSearch(e.target.value)} placeholder="🔎 Rechercher un rôle" className="px-2 py-1 bg-stone-900 border border-stone-700 rounded-lg text-white w-44 focus:outline-none select-text" />
+                      <select value={creatorEd} onChange={(e) => setCreatorEd(e.target.value)} className="px-2 py-1 bg-stone-900 border border-stone-700 rounded-lg text-white">
+                        <option value="all">Tous les rôles</option><option value="base">Officiels (TB, BMR, SnV)</option><option value="exp">Expérimentaux / autres</option>
+                      </select>
+                      {!catalog && <button onClick={() => ensureCatalog()} className="px-2 py-1 bg-indigo-800 hover:bg-indigo-700 border border-indigo-400 rounded-lg text-white font-bold">📚 Charger le catalogue complet</button>}
+                      <span className="text-[10px] text-stone-400">{catalogMsg}</span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {TEAMS.map(([k, l]) => (
+                        <button key={k} onClick={() => setCreatorTeam(k)} className={`px-2 py-1 rounded-lg border font-bold ${creatorTeam === k ? 'bg-indigo-600 border-indigo-300 text-white' : 'bg-stone-900 border-stone-700 text-stone-300'}`}>{l}{k !== 'all' ? ` (${count(k)})` : ''}</button>
+                      ))}
+                      <span className="ml-2 text-stone-300">Total : <strong className="text-amber-300">{creatorSel.length}</strong> rôles</span>
+                      <button onClick={() => setCreatorSel([])} className="ml-auto px-2 py-1 bg-stone-900 hover:bg-red-950 border border-stone-700 rounded-lg text-stone-300">Tout effacer</button>
+                    </div>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-3">
+                    <div className="grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-1.5">
+                      {list.map(r => {
+                        const on = creatorSel.includes(r.id);
+                        return (
+                          <button
+                            key={r.id}
+                            onClick={() => toggle(r.id)}
+                            title={`${r.name} (${r.team}) — ${r.ability || ''}`}
+                            className={`flex items-center gap-1.5 p-1.5 rounded-xl border text-left transition ${on ? 'bg-indigo-900/70 border-indigo-300 ring-1 ring-indigo-400' : 'bg-stone-900 border-stone-800 hover:border-stone-500'}`}
+                          >
+                            <img src={r.cdnIcon} alt="" className="w-9 h-9 object-contain shrink-0" onError={(e) => { e.target.style.visibility = 'hidden'; }} />
+                            <span className="min-w-0">
+                              <span className={`block text-[11px] font-bold truncate ${r.team === 'demon' ? 'text-red-300' : r.team === 'minion' ? 'text-orange-300' : r.team === 'outsider' ? 'text-sky-300' : 'text-stone-100'}`}>{r.name}</span>
+                              <span className="block text-[9px] text-stone-500">{isBaseRole(r) ? 'officiel' : '🧪 expérimental'}{on ? ' · ✔' : ''}</span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                      {list.length === 0 && <p className="text-stone-500 italic col-span-full text-center py-8">Aucun rôle ne correspond.</p>}
+                    </div>
+                  </div>
+
+                  <div className="px-4 py-2.5 border-t border-stone-800 space-y-2 text-xs">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button onClick={saveCreatorScript} disabled={creatorSel.length === 0} className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 text-white rounded-lg font-bold">💾 Enregistrer</button>
+                      <button onClick={() => { applyScript(buildScript(creatorName.trim() || 'Mon script', creatorAuthor.trim(), creatorSel)); setCreatorOpen(false); }} disabled={creatorSel.length === 0} className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-stone-950 rounded-lg font-bold">▶ Utiliser pour la partie</button>
+                      <button onClick={() => { try { navigator.clipboard.writeText(creatorJson()); setScriptMsg('✔ JSON copié dans le presse-papiers'); } catch (e) { setScriptMsg('✘ copie impossible'); } }} disabled={creatorSel.length === 0} className="px-3 py-1.5 bg-stone-800 hover:bg-stone-700 disabled:opacity-40 border border-stone-600 text-stone-100 rounded-lg">📋 Copier le JSON</button>
+                      <button
+                        onClick={() => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([creatorJson()], { type: 'application/json' })); a.download = (creatorName || 'script') + '.json'; a.click(); }}
+                        disabled={creatorSel.length === 0}
+                        className="px-3 py-1.5 bg-stone-800 hover:bg-stone-700 disabled:opacity-40 border border-stone-600 text-stone-100 rounded-lg"
+                      >⬇ Télécharger .json</button>
+                      {scriptMsg && <span className="text-amber-300 text-[11px]">{scriptMsg}</span>}
+                    </div>
+                    {savedScripts.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-stone-400 font-bold">Mes scripts :</span>
+                        {savedScripts.map(sc => (
+                          <span key={sc.name} className="flex items-center rounded-lg border border-stone-700 bg-stone-900 overflow-hidden">
+                            <button onClick={() => loadSavedScript(sc)} className="px-2 py-1 text-stone-200 hover:bg-stone-800" title="Charger dans le créateur">{sc.name} <span className="text-stone-500">({(sc.roles || []).length})</span></button>
+                            <button onClick={() => persistScripts(savedScripts.filter(x => x.name !== sc.name))} className="px-1.5 py-1 text-stone-500 hover:text-red-400 hover:bg-stone-800" title="Supprimer">✕</button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* INFOBULLE DE POUVOIR (survol d'un rôle : cercle, sélecteur, hypothèse) */}
           {hoverRole && (
             <div className="fixed bottom-16 left-1/2 -translate-x-1/2 z-[60] w-72 max-w-[92vw] p-2.5 rounded-xl bg-stone-950/98 border border-amber-500 shadow-2xl pointer-events-none">
@@ -2862,25 +3188,24 @@
                   </span>
 
                   {isStorytellerMode && (
-                    <div className="flex items-center gap-1 ml-1 border-l border-stone-700 pl-1">
-                      <button
-                        onClick={() => setIsTimerRunning(!isTimerRunning)}
-                        className="hover:text-amber-400 text-stone-300"
-                      >
+                    <div className="flex flex-wrap items-center gap-1 ml-1 border-l border-stone-700 pl-1">
+                      <button onClick={toggleTimerRun} className="hover:text-amber-400 text-stone-300" title={isTimerRunning ? 'Pause' : 'Démarrer'}>
                         <Icon name={isTimerRunning ? "Pause" : "Play"} className="w-2.5 h-2.5" />
                       </button>
-                      <button
-                        onClick={() => setDayTimerSeconds(s => s + 60)}
-                        className="hover:text-amber-400 text-stone-300 text-[9px] font-mono"
-                      >
-                        +1m
-                      </button>
-                      <button
-                        onClick={() => setDayTimerSeconds(s => Math.max(0, s - 60))}
-                        className="hover:text-amber-400 text-stone-300 text-[9px] font-mono"
-                      >
-                        -1m
-                      </button>
+                      <input
+                        type="text"
+                        value={timerInput}
+                        onChange={(e) => setTimerInput(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') applyTimerInput(); }}
+                        placeholder="mm:ss"
+                        title="Règle le temps à la seconde près : 4:30, 90, 1m20, 5m…"
+                        className="w-14 px-1 bg-stone-950 border border-stone-700 rounded text-[10px] font-mono text-amber-200 focus:outline-none select-text"
+                      />
+                      <button onClick={applyTimerInput} className="hover:text-amber-400 text-stone-300 text-[9px] font-mono font-bold">OK</button>
+                      {[['-10s', -10], ['+10s', 10], ['-1m', -60], ['+1m', 60]].map(([l, d]) => (
+                        <button key={l} onClick={() => adjustTimer(d)} className="hover:text-amber-400 text-stone-300 text-[9px] font-mono">{l}</button>
+                      ))}
+                      <button onClick={ringGong} className="hover:text-amber-400 text-sm leading-none" title="Faire sonner le gong pour tout le monde (retour à la Place du village)">🔔</button>
                     </div>
                   )}
                 </div>
@@ -3008,7 +3333,8 @@
             {phase === 'night' ? (
               isStorytellerMode ? (
                 <div className="flex items-center gap-2 flex-nowrap">
-                  <span className="text-indigo-300 font-bold uppercase text-[9px] tracking-wider shrink-0">🌙 Cottages :</span>
+                  <span className="text-indigo-300 font-bold uppercase text-[9px] tracking-wider shrink-0">🌙 Nuit {dayNumber}{dayNumber <= 1 ? ' · 1ʳᵉ nuit' : ''} · Cottages :</span>
+                  <span className="text-[9px] text-stone-400 shrink-0">ordre : <span className="text-sky-400 font-bold">● 1ʳᵉ nuit</span> · <span className="text-violet-400 font-bold">● autres nuits</span> · <span className="text-stone-400 font-bold">● mort</span></span>
                   <div
                     onClick={leaveCottage}
                     className={`px-2 py-1 rounded-xl border cursor-pointer select-none text-[10px] shrink-0 ${!nightState.at ? 'bg-indigo-950 border-indigo-400 text-indigo-200' : 'bg-stone-900/80 border-stone-800 text-stone-400 hover:text-stone-200'}`}
@@ -3101,10 +3427,10 @@
             
             {/* CONTEUR EN HAUT À GAUCHE */}
             <div className="absolute top-2 left-2 sm:top-3 sm:left-3 z-30 flex flex-col items-start gap-1">
-              <div className="relative w-24 h-24 sm:w-36 sm:h-36 rounded-2xl overflow-hidden border-2 border-amber-500/80 bg-stone-950 shadow-2xl group">
+              <div style={{ width: layout.mjCamPx, height: layout.mjCamPx }} className="relative rounded-2xl overflow-hidden border-2 border-amber-500/80 bg-stone-950 shadow-2xl group">
                 {isStorytellerMode && hasVideo(webcamStream) ? (
                   <StreamVideo stream={webcamStream} className="w-full h-full object-cover" />
-                ) : (!isStorytellerMode && hasVideo(remoteStreams[hostKey])) ? (
+                ) : (!isStorytellerMode && hostCamVisible && hasVideo(remoteStreams[hostKey])) ? (
                   <StreamVideo stream={remoteStreams[hostKey]} className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full flex flex-col items-center justify-center bg-stone-900 text-5xl sm:text-7xl">
@@ -3233,7 +3559,7 @@
             {/* CERCLE DU VILLAGE : CALIBRÉ POUR 100% DE HAUTEUR */}
             <main className="flex-1 flex items-center justify-center relative p-2 my-auto h-full">
               {players.length > 0 && (
-                <div className="relative w-[min(65vh,84vw)] h-[min(65vh,84vw)] rounded-full flex items-center justify-center m-auto">
+                <div style={{ width: layout.circleD, height: layout.circleD }} className="relative shrink-0 rounded-full flex items-center justify-center m-auto">
                   
                   <div className="absolute inset-10 rounded-full border border-purple-900/30 pointer-events-none flex items-center justify-center opacity-25">
                     <div className="text-6xl sm:text-8xl filter drop-shadow">😈</div>
@@ -3283,7 +3609,7 @@
                   )}
 
                   {/* CENTRE DU CERCLE */}
-                  <div className="w-36 h-36 sm:w-44 sm:h-44 md:w-48 md:h-48 rounded-full bg-stone-950/95 border-2 border-amber-700/60 shadow-[0_0_60px_rgba(0,0,0,0.9)] flex flex-col items-center justify-center p-2 text-center z-20">
+                  <div style={{ width: layout.centerD, height: layout.centerD }} className="shrink-0 rounded-full bg-stone-950/95 border-2 border-amber-700/60 shadow-[0_0_60px_rgba(0,0,0,0.9)] flex flex-col items-center justify-center p-2 text-center z-20">
                     {nomination.active ? (
                       <>
                         <span className="text-[9px] uppercase font-bold tracking-widest text-amber-400">Vote en cours</span>
@@ -3374,11 +3700,8 @@
                     const top = `${50 + 41 * Math.sin(angle)}%`;
                     const isRightHalf = Math.cos(angle) >= 0;
 
-                    // Tailles adaptées au nombre de joueurs et à l'écran (plus grand quand il y a de la place)
-                    const circleD = Math.min(0.65 * vp.h, 0.84 * vp.w);
-                    const chord = 2 * 0.41 * circleD * Math.sin(Math.PI / Math.max(players.length, 3));
-                    const seatPx = Math.round(Math.max(52, Math.min(112, chord * 0.66)));
-                    const tokenPx = Math.round(Math.max(42, Math.min(76, chord * 0.46)));
+                    // Tailles calculées selon l'écran et le nombre de joueurs (jamais de chevauchement avec le centre)
+                    const { seatPx, tokenPx } = layout;
 
                     const isMe = p.id === currentUserId;
                     const roleObj = p.role ? ROLES_DB[p.role] : null;
@@ -3399,7 +3722,13 @@
                     const provisionalBlock = isNominee && !isBlock && countedVotes >= majorityRequired && (!onTheBlock || countedVotes > onTheBlock.votes);
 
                     const stream = isMe ? webcamStream : remoteStreams[peerKeyOf(roomCode, p.id)];
-                    const videoOn = hasVideo(stream);
+                    // Webcam visible uniquement pour ceux qui sont dans le même salon (jour) ou le même cottage (nuit)
+                    const sameRoom = isMe || locOf(peerKeyOf(roomCode, p.id)) === locOf(myPeerId);
+                    const videoOn = hasVideo(stream) && sameRoom;
+                    // Jour : jaune = présent sur la Place du village, gris = parti dans un autre salon
+                    const present = phase === 'day' && p.inRoom === 'square';
+                    const away = phase === 'day' && p.inRoom !== 'square';
+                    const nightRank = nightRanks[p.id];
                     const tokens = isStorytellerMode ? p.reminders : (myTokens[p.id] || []);
                     const bub = bubbleOf(p);
                     const handOrder = handQueue.findIndex(x => x.id === p.id) + 1;
@@ -3437,6 +3766,8 @@
                             } ${
                               isNominee ? 'border-red-500 ring-4 ring-red-500/80 animate-pulse'
                                 : isVotingNow ? 'border-amber-400 ring-4 ring-amber-400/80'
+                                : present ? 'border-yellow-400 shadow-[0_0_14px_rgba(250,204,21,0.55)]'
+                                : away ? `border-stone-600 ${videoOn ? '' : 'opacity-50 grayscale'}`
                                 : 'border-stone-700 hover:border-amber-500'
                             }`}
                             title={phase === 'night' && isStorytellerMode ? `Aller dans le cottage de ${p.name}` : ''}
@@ -3500,6 +3831,19 @@
                               title={isStorytellerMode ? 'Reprendre la parole' : 'A la parole'}
                             >
                               🎤
+                            </div>
+                          )}
+
+                          {/* ORDRE DE RÉVEIL (Conteur, de nuit) : bleu = 1ʳᵉ nuit, violet = autres nuits, gris barré = mort */}
+                          {nightRank && (
+                            <div
+                              className={`absolute -bottom-2 -left-2 z-10 w-7 h-7 rounded-full border-2 flex items-center justify-center text-xs font-black shadow-xl ${
+                                !p.alive ? 'bg-stone-700 border-stone-400 text-stone-300 line-through opacity-80' : dayNumber <= 1 ? 'bg-sky-600 border-white text-white' : 'bg-violet-700 border-white text-white'
+                              }`}
+                              title={!p.alive ? `Mort · ordre ${nightRank} (ne se réveille normalement pas)` : `${dayNumber <= 1 ? 'Première nuit' : 'Nuit ' + dayNumber} : ${nightRank}ᵉ à réveiller`}
+                            >
+                              {nightRank}
+                              {!p.alive && <span className="absolute -top-2 -right-2 text-[10px]">💀</span>}
                             </div>
                           )}
 
@@ -3568,7 +3912,7 @@
                         </div>
 
                         <div style={{ maxWidth: Math.max(seatPx + 24, 84) }} className="mt-0.5 px-1.5 rounded-md bg-black/90 border border-stone-800 text-center shadow">
-                          <div className="text-[10px] sm:text-xs font-bold text-stone-200 truncate">{p.name}</div>
+                          <div className={`text-[10px] sm:text-xs font-bold truncate ${present ? 'text-yellow-300' : away ? 'text-stone-500' : 'text-stone-200'}`}>{p.name}</div>
                         </div>
 
                         {/* ACTIONS RAPIDES AU SURVOL */}
@@ -4369,6 +4713,7 @@
                       <button onClick={() => loadCustomScript(scriptJsonText)} className="px-3 py-1 bg-amber-600 hover:bg-amber-500 text-stone-950 font-bold rounded-lg text-[11px]">Charger</button>
                     </div>
                     {scriptMsg && <p className="text-[10px] text-amber-300 leading-snug">{scriptMsg}</p>}
+                    <button onClick={() => { setCreatorOpen(true); ensureCatalog(); }} className="w-full px-2 py-1.5 bg-indigo-700 hover:bg-indigo-600 text-white rounded-lg text-[11px] font-bold">🛠️ Créateur de scripts (tous les personnages)</button>
                   </div>
                 )}
 
