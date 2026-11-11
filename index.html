@@ -209,7 +209,8 @@
         gemini: { key: '', model: 'gemini-3.8-flash' },
         custom: { key: '', model: '', baseUrl: 'http://localhost:11434/v1' }
       },
-      speakEvery: 10, maxMsgPerMin: 10, autoListen: true, approveNominations: true, nightAuto: true,
+      speakEvery: 10, maxMsgPerMin: 10, autoListen: true,
+      mjEnabled: false, mjName: 'Maître Corbeau', mjProvider: '', mjDayMin: 6, approveNominations: true, nightAuto: true,
       defenseSeconds: 0, maxParallel: 3, fullRoleList: true, learn: true, observe: true, callBudget: 400
     };
     // Modèles proposés (liste officielle consultée en novembre 2026) : le bouton « ↻ Modèles » récupère la liste réelle de ta clé
@@ -339,23 +340,31 @@
       try { return JSON.parse(txt.slice(a, b + 1)); } catch (e) { return null; }
     };
 
+    // fetch avec délai d'attente (un appel qui ne répond jamais ne doit pas bloquer toute la conversation)
+    const fetchT = async (url, opt = {}, ms = 30000) => {
+      const ctl = new AbortController();
+      const t = setTimeout(() => ctl.abort(), ms);
+      try { return await fetch(url, { ...opt, signal: ctl.signal }); }
+      catch (e) { throw new Error(e && e.name === 'AbortError' ? 'délai dépassé (30 s)' : ((e && e.message) || String(e))); }
+      finally { clearTimeout(t); }
+    };
     // Un seul point d'entrée pour tous les fournisseurs
     const callLLM = async ({ provider, key, model, baseUrl }, system, user) => {
       if (provider !== 'custom' && !key) throw new Error('clé API manquante (' + provider + ')');
       if (!model) throw new Error('modèle non renseigné (' + provider + ')');
       let r;
       if (provider === 'claude') {
-        r = await fetch('https://api.anthropic.com/v1/messages', {
+        r = await fetchT('https://api.anthropic.com/v1/messages', {
           method: 'POST',
           headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
           body: JSON.stringify({ model, max_tokens: 900, system, messages: [{ role: 'user', content: user }] })
         });
         const d = await r.json();
-        if (!r.ok) throw new Error((d.error && d.error.message) || ('HTTP ' + r.status));
+        if (!r.ok) throw new Error('[' + r.status + '] ' + ((d.error && d.error.message) || 'erreur'));
         return (d.content || []).map(c => c.text || '').join('');
       }
       if (provider === 'gemini') {
-        r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent?key=' + encodeURIComponent(key), {
+        r = await fetchT('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent?key=' + encodeURIComponent(key), {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
@@ -365,19 +374,19 @@
           })
         });
         const d = await r.json();
-        if (!r.ok) throw new Error((d.error && d.error.message) || ('HTTP ' + r.status));
+        if (!r.ok) throw new Error('[' + r.status + '] ' + ((d.error && d.error.message) || 'erreur'));
         return (((d.candidates || [])[0] || {}).content || { parts: [] }).parts.map(x => x.text || '').join('');
       }
       const base = provider === 'openai' ? 'https://api.openai.com/v1' : String(baseUrl || '').replace(/\/$/, '');
       const body = { model, messages: [{ role: 'system', content: system }, { role: 'user', content: user }] };
       if (provider === 'openai') body.max_completion_tokens = 4000; else body.max_tokens = 900;
-      r = await fetch(base + '/chat/completions', {
+      r = await fetchT(base + '/chat/completions', {
         method: 'POST',
         headers: Object.assign({ 'Content-Type': 'application/json' }, key ? { Authorization: 'Bearer ' + key } : {}),
         body: JSON.stringify(body)
       });
       const d = await r.json();
-      if (!r.ok) throw new Error((d.error && (d.error.message || d.error)) || ('HTTP ' + r.status));
+      if (!r.ok) throw new Error('[' + r.status + '] ' + ((d.error && (d.error.message || d.error)) || 'erreur'));
       return ((((d.choices || [])[0] || {}).message || {}).content) || '';
     };
 
@@ -444,6 +453,61 @@
       if (m && (m[1] || m[2])) return Number(m[1] || 0) * 60 + Number(m[2] || 0);
       return null;
     };
+
+
+    // ================= Niveaux de difficulté, scénarios supplémentaires, jetons personnalisés, fond d'écran =================
+    const SCRIPT_LEVELS = { tb: 1, bmr: 2, snv: 3, ngj: 2, luf: 3, x_init: 1, x_small: 1, x_rumeurs: 2, x_meca: 2, x_macabre: 2, x_chaos: 3 };
+    const LEVEL_LABEL = { 1: '⭐ Débutant', 2: '⭐⭐ Intermédiaire', 3: '⭐⭐⭐ Expert' };
+    // Scénarios thématiques (rôles du jeu) ajoutés aux scripts officiels
+    const EXTRA_SCRIPTS = {
+      x_init: { id: 'x_init', name: 'Initiation au Village', desc: 'Pour une toute première partie : informations claires, peu d’effets compliqués.',
+        roles: ['washerwoman', 'librarian', 'investigator', 'chef', 'empath', 'monk', 'soldier', 'mayor', 'slayer', 'saint', 'butler', 'recluse', 'poisoner', 'scarletwoman', 'imp'] },
+      x_small: { id: 'x_small', name: 'Petite Table (5 à 8 joueurs)', desc: 'Un scénario resserré qui marche très bien avec peu de joueurs.',
+        roles: ['chef', 'empath', 'fortuneteller', 'monk', 'soldier', 'slayer', 'mayor', 'saint', 'drunk', 'poisoner', 'scarletwoman', 'imp'] },
+      x_rumeurs: { id: 'x_rumeurs', name: 'Rumeurs & Faux-semblants', desc: 'Ragots, ivresse et petits mensonges : le bluff devient une arme.',
+        roles: ['gossip', 'courtier', 'professor', 'minstrel', 'tea_lady', 'pacifist', 'fool', 'savant', 'seamstress', 'artist', 'juggler', 'sage', 'chambermaid', 'butler', 'tinker', 'moonchild', 'goon', 'poisoner', 'spy', 'godfather', 'evil_twin', 'imp', 'pukka'] },
+      x_meca: { id: 'x_meca', name: 'Mécanique Infernale', desc: 'Des chiffres, des distances et des horloges : déduction pour esprits logiques.',
+        roles: ['clockmaker', 'dreamer', 'snake_charmer', 'mathematician', 'flowergirl', 'town_crier', 'oracle', 'philosopher', 'balloonist', 'amnesiac', 'sweetheart', 'barber', 'lunatic', 'recluse', 'widow', 'goblin', 'cerenovus', 'pit_hag', 'zombuul', 'fang_gu'] },
+      x_macabre: { id: 'x_macabre', name: 'Danse Macabre', desc: 'Beaucoup de morts, de protections et de retournements de situation.',
+        roles: ['undertaker', 'grandmother', 'sailor', 'chambermaid', 'innkeeper', 'exorcist', 'monk', 'professor', 'mayor', 'soldier', 'saint', 'sweetheart', 'barber', 'assassin', 'godfather', 'spy', 'baron', 'shabaloth', 'pukka', 'po'] },
+      x_chaos: { id: 'x_chaos', name: 'Chaos Sanglant', desc: 'Pour les tables expertes : rôles tordus, informations piégées, démons imprévisibles.',
+        roles: ['philosopher', 'artist', 'juggler', 'sage', 'savant', 'amnesiac', 'fisherman', 'cannibal', 'gambler', 'exorcist', 'innkeeper', 'moonchild', 'mutant', 'klutz', 'lunatic', 'goon', 'witch', 'cerenovus', 'pit_hag', 'evil_twin', 'godfather', 'devils_advocate', 'assassin', 'mastermind', 'widow', 'goblin', 'zombuul', 'shabaloth', 'po', 'fang_gu', 'vigormortis', 'nodii', 'vortox', 'leviathan'] }
+    };
+
+    // Jetons de rappel personnalisés : « @c:#couleur:texte » (affichés comme les autres jetons)
+    const CUSTOM_COLORS = [['#dc2626', 'Rouge'], ['#ea580c', 'Orange'], ['#ca8a04', 'Jaune'], ['#16a34a', 'Vert'], ['#0891b2', 'Cyan'], ['#2563eb', 'Bleu'], ['#7c3aed', 'Violet'], ['#db2777', 'Rose'], ['#57534e', 'Gris'], ['#0c0a09', 'Noir']];
+    const encodeToken = (color, text) => `@c:${color}:${text}`;
+    const parseCustomToken = (label) => { const m = /^@c:(#[0-9a-fA-F]{6}):([\s\S]*)$/.exec(String(label)); return m ? { bg: m[1], text: m[2] } : null; };
+    const tokenName = (label) => { const c = parseCustomToken(label); return c ? c.text : label; };
+
+    // Fonds d'écran (préférence locale de chaque joueur)
+    const BG_PRESETS = [
+      ['Nuit violette', '#100a14'], ['Minuit', 'linear-gradient(160deg,#0b1020,#1b2a4a)'], ['Forêt', 'linear-gradient(160deg,#07140c,#143a24)'],
+      ['Sang', 'linear-gradient(160deg,#1a0508,#4a0f18)'], ['Brume', 'linear-gradient(160deg,#17171c,#3a3a46)'],
+      ['Aurore', 'linear-gradient(160deg,#120a24,#3a1d5c 50%,#0f3a4a)'], ['Crépuscule', 'linear-gradient(160deg,#1c0f0a,#5a2a12)']
+    ];
+    const loadBg = () => { try { return { type: 'preset', value: '#100a14', dim: 0.55, ...JSON.parse(localStorage.getItem('botc_bg') || '{}') }; } catch (e) { return { type: 'preset', value: '#100a14', dim: 0.55 }; } };
+    const bgStyleOf = (bg) => bg.type === 'image'
+      ? { backgroundImage: `linear-gradient(rgba(0,0,0,${bg.dim}),rgba(0,0,0,${bg.dim})), url("${bg.value}")`, backgroundSize: 'cover', backgroundPosition: 'center' }
+      : { background: bg.value };
+    // Compresse l'image choisie (max 1600 px, JPEG) pour qu'elle tienne dans le stockage du navigateur
+    const imageToDataUrl = (file) => new Promise((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onerror = () => reject(new Error('lecture impossible'));
+      fr.onload = () => {
+        const img = new Image();
+        img.onerror = () => reject(new Error('image illisible'));
+        img.onload = () => {
+          const k = Math.min(1, 1600 / Math.max(img.width, img.height));
+          const c = document.createElement('canvas');
+          c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+          c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+          resolve(c.toDataURL('image/jpeg', 0.72));
+        };
+        img.src = fr.result;
+      };
+      fr.readAsDataURL(file);
+    });
 
     // ==========================================
     // COMPOSANT D'ICÔNES SVG AUTONOME
@@ -529,6 +593,7 @@
         roles: ['balloonist', 'savant', 'amnesiac', 'fisherman', 'artist', 'cannibal', 'mutant', 'lunatic', 'widow', 'goblin', 'leviathan']
       }
     };
+    Object.assign(SCRIPTS_DATA, EXTRA_SCRIPTS);
 
     const ROLES_DB = {
       // --- TROUBLE BREWING ---
@@ -796,6 +861,15 @@
       const [gongUntil, setGongUntil] = useState(0);
       const lastGongTs = useRef(0);
       const [nightOnlyInPlay, setNightOnlyInPlay] = useState(true);
+      const [customTokText, setCustomTokText] = useState('');
+      const [customTokColor, setCustomTokColor] = useState('#7c3aed');
+      const [savedTokens, setSavedTokens] = useState(() => { try { return JSON.parse(localStorage.getItem('botc_tokens') || '[]'); } catch (e) { return []; } });
+      const [bgPref, setBgPref] = useState(loadBg);
+      const [bgOpen, setBgOpen] = useState(false);
+      const [bgMsg, setBgMsg] = useState('');
+      const [bgUrl, setBgUrl] = useState('');
+      const [mjInfoTick, setMjInfoTick] = useState(0);
+      const fnRef = useRef({});
       const voiceManual = useRef(false);
       const [hands, setHands] = useState({});        // mains levées : { clé joueur : horodatage }
       const [speaker, setSpeaker] = useState(null);  // qui a la parole : { id, name, ts }
@@ -808,7 +882,8 @@
         prevAlive: null, nomKey: null, nomResKey: null, votesAsked: null, pendingVotes: {}, voteWaitSince: 0,
         calls: 0, errStreak: 0, phaseTag: null, learnedFor: null,
         pq: [], lastPriv: {}, sinceObserve: 0, speakerDone: 0, removed: {}, botInvSeen: {},
-        dayStart: 0, chain: 0, lastAnyMsg: 0, lastMsg: null, saying: false, privChain: {}
+        dayStart: 0, chain: 0, lastAnyMsg: 0, lastMsg: null, saying: false, sayingAt: 0, privChain: {}, pauseUntil: 0, alert: '', handledTransfer: 0, mjq: [],
+        mj: { running: false, busy: false, log: [], status: '', night: [], dayInit: null, nightRun: null, handledPending: null, announcedResult: null, oneMin: false, endedDay: false, timerStartedAt: 0, waiting: null, dmBusy: false, over: false }
       });
       useEffect(() => { saveAiCfg(aiCfg); }, [aiCfg]);
       const [cottageChatMessages, setCottageChatMessages] = useState([]);
@@ -1105,6 +1180,16 @@
                 hypothesisRole: lp && lp.hypothesisRole !== undefined ? lp.hypothesisRole : rp.hypothesisRole
               };
             }));
+            // Transfert de MJ : le joueur désigné prend les rênes de la partie sur son appareil
+            const ht = data.hostTransfer;
+            if (ht && currentUserId && vk(currentUserId) === ht.toKey && ht.ts !== ai.current.handledTransfer) {
+              ai.current.handledTransfer = ht.ts;
+              ai.current.removed[currentUserId] = true;
+              setIsStorytellerMode(true);
+              setCurrentUserId(null);
+              if (data.storyteller) setStoryteller(data.storyteller);
+              setTimeout(() => { if (broadcastRef.current) broadcastRef.current(); }, 1500);
+            }
             if (data.phase) setPhase(data.phase);
             if (data.dayNumber !== undefined) setDayNumber(data.dayNumber);
             setGameStarted(Boolean(data.gameStarted));
@@ -1940,7 +2025,7 @@
 
         const task = {
           speak: extra.channel
-            ? `Situation : tu es dans une conversation PRIVÉE « ${extra.channel.label} » (seuls les présents la voient). ${extra.why}.\nRéponds directement à ce qu'on vient de te dire, en restant dans ton rôle (1 à 3 phrases). Si rien ne mérite de réponse, "silent".\nJSON : {"action":"say|silent","text":"ta réponse (vide si silent)","notes":"${NOTES_HINT}"}`
+            ? `Situation : tu es dans une conversation PRIVÉE « ${extra.channel.label} » (seuls les présents la voient). ${extra.why}.${extra.force ? ' Tu DOIS répondre (action "say").' : ''}\nRéponds directement à ce qu'on vient de te dire, en restant dans ton rôle (1 à 3 phrases). Si rien ne mérite de réponse, "silent".\nJSON : {"action":"say|silent","text":"ta réponse (vide si silent)","notes":"${NOTES_HINT}"}`
             : `Situation : ${extra.why || 'tu peux prendre la parole si c\'est pertinent'}.\nDécide si tu parles maintenant. Actions possibles : "say" (dire quelque chose au village), "nominate" (accuser un joueur vivant — seulement si pertinent, si tu es vivant et si tu n'as pas déjà accusé aujourd'hui), "raise" (lever la main pour demander la parole : préfère-le à couper quelqu'un quand plusieurs personnes parlent ou que la parole est donnée à un autre), "silent" (seulement si tu viens de parler à l'instant ou si tu n'as vraiment rien à ajouter).${extra.force ? ' IMPORTANT : tu DOIS prendre la parole maintenant ("say", ou "nominate" si tu as un vrai soupçon), pas "silent".' : ''}\nJSON : {"action":"say|nominate|raise|silent","text":"ta phrase (vide si silent ou raise)","target":"nom exact du joueur accusé (si nominate)","notes":"${NOTES_HINT}"}`,
           observe: `Situation : tu écoutes la conversation sans parler. Analyse ce qui vient d'être dit : qui revendique quoi, qui se contredit, qui protège ou accuse qui, ce que cela t'apprend (y compris sur la façon de jouer des humains).${evil ? ' Prépare ton bluff et tes futures cibles.' : ''}\nJSON : {"notes":"${NOTES_HINT}","bluff":"rôle ou stratégie de bluff si tu es dans le Mal (sinon vide)"}`,
           night: `Situation : c'est la nuit ${L.dayNumber}. Si ton rôle agit la nuit et demande un choix (cible), choisis-le de façon stratégique ; sinon laisse "targets" vide. Prépare aussi ce que tu raconteras demain (quel rôle annoncer, quelle information partager ou cacher).\nJSON : {"targets":["nom exact"],"plan":"ce que tu comptes dire / rôle que tu vas annoncer","reasoning":"raison courte pour le Conteur","notes":"${NOTES_HINT}"}`,
@@ -1973,24 +2058,36 @@
         const t0 = Date.now();
         try {
           A.calls++;
-          const raw = await callLLM({ provider, key: pc.key, model: pc.model, baseUrl: pc.baseUrl }, system, user);
+          const call = () => callLLM({ provider, key: pc.key, model: pc.model, baseUrl: pc.baseUrl }, system, user);
+          let raw;
+          try { raw = await call(); }
+          catch (e1) {
+            // erreur passagère (limite de débit, serveur chargé, délai) : un second essai après une courte pause
+            if (/\[(429|500|502|503|529)\]|délai|overloaded|quota|rate/i.test(String((e1 && e1.message) || e1))) { await new Promise(r => setTimeout(r, 3500)); raw = await call(); }
+            else throw e1;
+          }
           const json = extractJson(raw);
           A.errStreak = 0;
+          A.alert = '';
           pushLog({ bot: bot.name, mode, provider, ms: Date.now() - t0, ok: !!json, text: raw.slice(0, 700) });
           if (json && typeof json.notes === 'string') memOf(bot).notes = json.notes.slice(0, 1400);
           return json;
         } catch (e) {
           A.errStreak++;
-          pushLog({ bot: bot.name, mode, provider, ms: Date.now() - t0, ok: false, text: String((e && e.message) || e) });
-          if (A.errStreak >= 4) { setAiCfg(c => ({ ...c, enabled: false })); pushLog({ bot: '—', mode: 'système', ok: false, text: 'IA désactivée après 4 erreurs consécutives. Vérifie ta clé / ton modèle.' }); }
+          const msg = String((e && e.message) || e);
+          A.alert = msg.slice(0, 120);
+          pushLog({ bot: bot.name, mode, provider, ms: Date.now() - t0, ok: false, text: msg });
+          const auth = /\[(401|403)\]|api key|invalid.*key|permission/i.test(msg);
+          if ((auth && A.errStreak >= 2) || A.errStreak >= 12) { setAiCfg(c => ({ ...c, enabled: false })); pushLog({ bot: '—', mode: 'système', ok: false, text: auth ? 'IA désactivée : clé ou modèle refusé. Corrige-le dans la config puis réactive.' : 'IA désactivée après 12 erreurs consécutives.' }); }
+          else A.pauseUntil = Date.now() + Math.min(90000, 6000 * A.errStreak); // pause puis reprise automatique : on ne coupe plus l'IA pour une erreur passagère
           return null;
         } finally { release(); }
       };
 
       // ---- Paroles publiques (bulles à côté des sièges) ----
-      const sendChatAs = (name, fromId, text, thread, label, members, isBot) => {
+      const sendChatAs = (name, fromId, text, thread, label, members, isBot, flags) => {
         const id = `${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-        const msg = { id, text, thread, threadLabel: label, members, from: name, fromId, ts: Date.now(), bot: !!isBot };
+        const msg = { id, text, thread, threadLabel: label, members, from: name, fromId, ts: Date.now(), bot: !!isBot, ...(flags || {}) };
         setChatMessages(prev => [...prev, msg]);
         if (roomCode) fb.put(roomCode, `chat/${id}`, msg);
       };
@@ -2022,6 +2119,7 @@
         A.lastSpoke[vk(bot.id)] = Date.now();
         A.botMsgTimes.push(Date.now());
         if (live.current.hands && live.current.hands[vk(bot.id)]) setHand(bot.id, false);
+        if (live.current.speaker && live.current.speaker.id === vk(bot.id)) giveWord(null);
         sendPublicAs(bot.name, vk(bot.id), t, true);
       };
 
@@ -2040,6 +2138,7 @@
 
       const botSay = async (bot, why, force) => {
         A.saying = true;
+        A.sayingAt = Date.now();
         try {
           const res = await askBot(bot, 'speak', { why, force });
           if (!res) return;
@@ -2052,7 +2151,7 @@
       // Réponse d'un bot dans une conversation privée (cottage, aparté, message direct) : bulle + chat
       const botReplyPrivate = async (bot, q) => {
         A.lastPriv[vk(bot.id)] = Date.now();
-        const res = await askBot(bot, 'speak', { why: q.why, channel: { label: q.label } });
+        const res = await askBot(bot, 'speak', { why: q.why, channel: { label: q.label }, force: q.force });
         if (!res || res.action === 'silent' || !res.text) return;
         A.lastPriv[vk(bot.id)] = Date.now();
         sendChatAs(bot.name, vk(bot.id), trimSpeech(res.text), q.thread, q.label, q.members, true);
@@ -2110,6 +2209,15 @@
         if (!res) return;
         const role = bot.role && ROLES_DB[bot.role] ? ROLES_DB[bot.role].name : '?';
         if (res.plan) memOf(bot).bluff = String(res.plan).slice(0, 160);
+        const tg = Array.isArray(res.targets) ? res.targets : [];
+        if (tg.length || res.plan) {
+          const parts = [];
+          if (tg.length) parts.push(`Cette nuit je choisis : ${tg.join(', ')}.`);
+          if (res.reasoning) parts.push(String(res.reasoning));
+          if (res.plan) parts.push(`Demain je compte annoncer : ${res.plan}.`);
+          const cid = cottageIdOf(bot.id);
+          sendChatAs(bot.name, vk(bot.id), trimSpeech(parts.join(' ')), 'cot:' + cid, cottageLabel(cid), ['host', ...cottageMembers(cid).map(x => vk(x.id)), vk(bot.id)].filter((v, i, a) => a.indexOf(v) === i), true);
+        }
         setNightActions(prev => [{ ts: Date.now(), night: live.current.dayNumber, bot: bot.name, role, targets: Array.isArray(res.targets) ? res.targets : [], plan: res.plan || '', reasoning: res.reasoning || '' }, ...prev].slice(0, 40));
         setNightUnseen(n => n + 1);
       };
@@ -2149,6 +2257,11 @@
             A.lastAnyMsg = Date.now();
             A.lastMsg = { from: m.from, fromId: m.fromId, text: m.text };
             if (m.bot) A.chain++; else A.chain = 0;
+            // un joueur s'adresse au MJ IA dans le village : il répond
+            if (cfg.mjEnabled && A.mj.running && !m.mj && !m.bot && m.fromId !== 'host') {
+              const lowT = String(m.text).toLowerCase();
+              if (lowT.includes(String(cfg.mjName || '').toLowerCase()) || /\b(mj|conteur|ma[iî]tre du jeu)\b/.test(lowT)) A.mjq.push({ kind: 'public', from: m.from, text: m.text });
+            }
             if (!cfg.enabled || L.phase !== 'day' || !L.gameStarted) return;
             const low = String(m.text).toLowerCase();
             const boost = low.includes('?') ? 1.6 : 1;
@@ -2162,6 +2275,11 @@
             });
             return;
           }
+          // un joueur écrit au MJ IA en privé (message direct ou cottage) : il répond
+          if (cfg.mjEnabled && A.mj.running && !m.mj && !m.bot && m.fromId !== 'host' && Array.isArray(m.members) && m.members.includes('host')
+              && (String(m.thread).startsWith('dm:') || String(m.thread).startsWith('cot:')) && !(A.mj.waiting && A.mj.waiting.thread === m.thread)) {
+            A.mjq.push({ kind: 'private', thread: m.thread, label: m.threadLabel, members: m.members, from: m.from, text: m.text });
+          }
           // conversation privée : les bots présents l'enregistrent (information) et répondent
           const recipients = L.players.filter(p => p.isBot && metaOf(p).enabled && vk(p.id) !== m.fromId && Array.isArray(m.members) && m.members.includes(vk(p.id)));
           recipients.forEach(b => {
@@ -2170,8 +2288,8 @@
             mem.info.push({ t: `${tagNow()} · ${m.threadLabel || 'privé'}`, txt: `${who} : ${m.text}`.slice(0, 300) });
             if (mem.info.length > 25) mem.info.shift();
             if (m.bot) A.privChain[m.thread] = (A.privChain[m.thread] || 0) + 1; else A.privChain[m.thread] = 0;
-            if (cfg.enabled && A.pq.length < 8 && (!m.bot || ((A.privChain[m.thread] || 0) < 5 && Math.random() < 0.6))) {
-              A.pq.push({ id: b.id, at: Date.now() + 900 + Math.random() * 1500, thread: m.thread, label: m.threadLabel, members: m.members, why: `${who} te dit : « ${m.text} »` });
+            if (cfg.enabled && A.pq.length < 12 && (!m.bot || m.mj || ((A.privChain[m.thread] || 0) < 5 && Math.random() < 0.6))) {
+              A.pq.push({ id: b.id, force: !m.bot || m.mj, at: Date.now() + 900 + Math.random() * 1500, thread: m.thread, label: m.threadLabel, members: m.members, why: `${who} te dit : « ${m.text} »` });
             }
           });
           if (recipients.length) aiBump();
@@ -2236,7 +2354,7 @@
             activeBots().sort(() => Math.random() - 0.5).forEach((b, i) => A.queue.push({ id: b.id, at: t0 + 2000 + i * (3000 + Math.random() * 2500), why, force: true }));
           }
         }
-        else { logPub('La nuit tombe.'); if (aiCfgRef.current.enabled && aiCfgRef.current.nightAuto) runNight(); }
+        else { logPub('La nuit tombe.'); if (aiCfgRef.current.enabled && aiCfgRef.current.nightAuto && !(aiCfgRef.current.mjEnabled && A.mj.running)) runNight(); }
       }, [phase, dayNumber, gameStarted]);
 
       // 5) nouvelle partie : on efface la mémoire de la partie précédente
@@ -2271,7 +2389,9 @@
           if (pb && metaOf(pb).enabled && now - (A.lastPriv[vk(pb.id)] || 0) > 1500) botReplyPrivate(pb, q);
           return;
         }
-        if (L.phase !== 'day' || L.nomination.active || pendingAccusation) return;
+        if (A.saying && now - A.sayingAt > 40000) A.saying = false; // garde-fou : un appel resté sans réponse ne bloque plus la conversation
+        if (now < A.pauseUntil) return;
+        if (L.phase !== 'day' || L.nomination.active) return;
         if (A.slots.active >= 2) return;
         const sp = L.speaker && now - L.speaker.ts < 90000 ? L.speaker : null;
         // 2. le Conteur donne la parole à un bot
@@ -2283,7 +2403,13 @@
         if (A.botMsgTimes.length >= Math.max(cfg.maxMsgPerMin || 5, 10)) return;
         const ok = (b) => metaOf(b).enabled && now - (A.lastSpoke[vk(b.id)] || 0) > 5000;
         // Quelqu'un d'autre a la parole : un bot lève la main au lieu de couper
-        const holdBack = (b) => { if (sp && sp.id !== vk(b.id)) { if (!(L.hands || {})[vk(b.id)]) setHand(b.id, true); return true; } return false; };
+        const isBotKey = (k) => L.players.some(p => p.isBot && vk(p.id) === k);
+        const holdBack = (b) => { if (sp && sp.id !== vk(b.id) && !isBotKey(sp.id)) { if (!(L.hands || {})[vk(b.id)]) setHand(b.id, true); return true; } return false; };
+        // 2bis. la parole est redonnée automatiquement aux bots qui lèvent la main (tu n'as rien à faire)
+        if (!sp) {
+          const nextBot = Object.entries(L.hands || {}).sort((a, b) => a[1] - b[1]).map(([k]) => L.players.find(p => vk(p.id) === k)).find(p => p && p.isBot && metaOf(p).enabled);
+          if (nextBot && L.players.every(p => p.isBot || !(L.hands || {})[vk(p.id)])) { giveWord(nextBot); return; }
+        }
         // 3. réactions aux messages du village
         const di = A.queue.findIndex(q => q.at <= now);
         if (di >= 0) {
@@ -2355,7 +2481,7 @@
           ttsSeen.current[m.id] = true;
           if (!ttsOn || !m.bot || Date.now() - m.ts > 20000) return;
           const t = String(m.thread);
-          const hear = (t === 'pub' && phase === 'day') || (!!panelCottageId && t === 'cot:' + panelCottageId) || (phase === 'day' && !!myRoomId && t === 'room:' + myRoomId) || t.startsWith('dm:');
+          const hear = (t === 'pub' && (phase === 'day' || m.mj)) || (!!panelCottageId && t === 'cot:' + panelCottageId) || (phase === 'day' && !!myRoomId && t === 'room:' + myRoomId) || t.startsWith('dm:');
           if (hear) speakText(m.from, m.text);
         });
       }, [chatMessages]);
@@ -2398,6 +2524,412 @@
           const raw = await callLLM({ provider, key: pc.key, model: pc.model, baseUrl: pc.baseUrl }, 'Réponds uniquement par un objet JSON.', 'Réponds exactement {"ok":true}');
           setAiTest(t => ({ ...t, [provider]: extractJson(raw) ? '✔ connexion OK' : '⚠ réponse inattendue : ' + raw.slice(0, 80) }));
         } catch (e) { setAiTest(t => ({ ...t, [provider]: '✘ ' + String((e && e.message) || e) })); }
+      };
+
+      // ================= MJ IA : un bot Conteur de bout en bout (le navigateur du créateur sert de moteur) =================
+      const M = A.mj;
+      const mjName = () => (aiCfgRef.current.mjName || 'Maître Corbeau');
+      const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+      const pickOne = (arr) => arr[Math.floor(Math.random() * arr.length)];
+      const mjLog = (txt) => { M.log.unshift({ ts: Date.now(), txt }); if (M.log.length > 40) M.log.pop(); M.status = txt; aiBump(); };
+      const nameToPlayer = (n) => live.current.players.find(p => String(p.name).toLowerCase() === String(n || '').toLowerCase());
+      const mjFlag = { mj: true };
+
+      // Annonce publique (bulle + voix pour tous) et message privé dans le cottage d'un joueur
+      const mjSay = (text) => {
+        const t = String(text || '').trim().slice(0, 420);
+        if (t) sendChatAs(mjName(), 'host', t, 'pub', '🏛️ Village', ['*'], true, mjFlag);
+      };
+      const mjTell = (p, text) => {
+        const t = String(text || '').trim().slice(0, 600);
+        if (t) sendChatAs(mjName(), 'host', t, 'cot:own_' + vk(p.id), '🏠 Cottage de ' + p.name, ['host', vk(p.id)], true, mjFlag);
+      };
+
+      // ---- Prompts du MJ (il voit tout le grimoire) ----
+      const grimoireText = () => live.current.players.map(p => {
+        const r = p.role ? ROLES_DB[p.role] : null;
+        const toks = (p.reminders || []).map(tokenName).join(', ');
+        const bel = (A.meta[vk(p.id)] || {}).believedRole;
+        return `- ${p.name} : ${r ? r.name + ' (' + r.team + ')' : 'sans rôle'}${bel && ROLES_DB[bel] ? ' [croit être ' + ROLES_DB[bel].name + ']' : ''} · ${p.alive ? 'vivant' : 'mort (votes de fantôme : ' + ghostCount(p) + ')'}${toks ? ' · jetons : ' + toks : ''}`;
+      }).join('\n');
+
+      const buildMjPrompt = (kind, x) => {
+        const L = live.current;
+        const script = L.currentScript;
+        const n = L.players.length;
+        const dist = PLAYER_DISTRIBUTION[n] || {};
+        const first = L.dayNumber <= 1;
+        const scriptLines = script.roles.map(id => ROLES_DB[id]).filter(Boolean).map(r => `${r.id} | ${r.name} (${r.team}) : ${String(r.ability || '').slice(0, 170)}`).join('\n');
+        const system = [
+          `Tu es « ${mjName()} », le Conteur (MJ) d'une partie de Blood on the Clocktower en ligne. Tu connais tout le grimoire et tu animes la partie de bout en bout, de façon théâtrale mais concise, en français. Tu es impartial.`,
+          `Règles à respecter : capacités exactes de chaque rôle ; la première nuit le Démon ne tue pas ; un joueur empoisonné ou ivre (jeton « Empoisonné » ou « Bourré ») reçoit une information possiblement fausse mais plausible et son pouvoir n'a aucun effet ; ne révèle jamais d'information secrète à un joueur qui ne doit pas la connaître ; une information vraie doit être EXACTE par rapport au grimoire.`,
+          `Réponds UNIQUEMENT par un objet JSON valide, sans texte autour ni balises.`
+        ].join('\n');
+        const gr = `Grimoire (secret, tu es seul à le voir) :\n${grimoireText()}`;
+        const task = {
+          setup: () => `Script : ${script.name}\nRôles du script (id | nom (équipe) : capacité) :\n${scriptLines}\nJoueurs (${n}) : ${L.players.map(p => p.name).join(', ')}\nRépartition à respecter : ${dist.townsfolk} villageois, ${dist.outsider} étrangers, ${dist.minion} sbires, ${dist.demon} démon (si le Baron est choisi : +2 étrangers et −2 villageois).\nChoisis exactement ${n} rôles DIFFÉRENTS (ids exacts) équilibrés et amusants pour ce groupe. Propose aussi 3 rôles de bluff pour le Démon (villageois ou étrangers du script NON choisis).\nJSON : {"roles":["id","id"],"bluffs":["id","id","id"],"comment":"une phrase"}`,
+          wake: () => `${gr}\n\nNuit ${L.dayNumber} (${first ? 'première nuit' : 'nuit suivante'}). Actions déjà résolues cette nuit :\n${M.night.join('\n') || '(aucune)'}\n\nC'est le tour de ${x.p.name}, ${x.role.name} : « ${x.role.ability} ».${x.role.wiki && x.role.wiki.howToRun ? '\nAide : ' + x.role.wiki.howToRun : ''}\nDécide ce que tu lui dis. Si son rôle donne une information : donne-la (exacte, ou fausse mais plausible s'il est empoisonné ou ivre). S'il doit choisir (cible, joueur, rôle…) : pose-lui clairement la question et mets needs_reply à true. Sinon needs_reply à false. Les effets automatiques possibles sont des jetons : {"type":"token","target":"nom exact","label":"Empoisonné"} (autres labels : « Bourré / Ivre », « Protégé »).\nJSON : {"message":"ce que tu dis au joueur (1 à 4 phrases)","needs_reply":false,"effects":[],"log":"résumé neutre pour ton journal de nuit"}`,
+          resolve: () => `${gr}\n\nNuit ${L.dayNumber}. Journal de la nuit :\n${M.night.join('\n') || '(vide)'}\n\n${x.p.name} (${x.role.name}) te répond : « ${x.reply} ». Applique son choix selon les règles de son rôle.\nJSON : {"message":"confirmation ou information pour le joueur (peut être vide)","effects":[],"log":"résumé neutre pour ton journal de nuit (qui choisit qui)"}`,
+          dawn: () => `${gr}\n\nJournal de la nuit ${L.dayNumber} :\n${M.night.join('\n') || '(aucune action)'}\n\nDétermine qui meurt cette nuit selon les règles (attaque du Démon, protections, immunités, effets particuliers). ${first ? 'Première nuit : en général personne ne meurt, sauf effet particulier.' : ''}\nJSON : {"deaths":["nom exact"],"narration":"2 phrases théâtrales qui annoncent le lever du jour et les morts éventuels, sans révéler aucun rôle"}`,
+          chat: () => `${gr}\n\n${x.kind === 'private' ? `${x.from} t'écrit en privé` : `${x.from} te dit dans le village`} : « ${x.text} ».\nRéponds-lui en 1 à 3 phrases (règles, rappel, tempo de la partie). Ne révèle jamais ce qu'il ne doit pas savoir.\nJSON : {"reply":"ta réponse"}`
+        }[kind]();
+        return { system, user: task };
+      };
+
+      const askMj = async (kind, x = {}) => {
+        const cfg = aiCfgRef.current;
+        const provider = cfg.mjProvider || cfg.defaultProvider;
+        const pc = cfg.providers[provider] || {};
+        const { system, user } = buildMjPrompt(kind, x);
+        await acquire();
+        const t0 = Date.now();
+        try {
+          A.calls++;
+          const call = () => callLLM({ provider, key: pc.key, model: pc.model, baseUrl: pc.baseUrl }, system, user);
+          let raw;
+          try { raw = await call(); }
+          catch (e1) {
+            if (/\[(429|500|502|503|529)\]|délai|overloaded|quota|rate/i.test(String((e1 && e1.message) || e1))) { await sleep(3500); raw = await call(); } else throw e1;
+          }
+          const json = extractJson(raw);
+          pushLog({ bot: '🎩 ' + mjName(), mode: kind, provider, ms: Date.now() - t0, ok: !!json, text: raw.slice(0, 700) });
+          return json;
+        } catch (e) {
+          const msg = String((e && e.message) || e);
+          A.alert = msg.slice(0, 120);
+          pushLog({ bot: '🎩 ' + mjName(), mode: kind, provider, ms: Date.now() - t0, ok: false, text: msg });
+          return null;
+        } finally { release(); }
+      };
+
+      // ---- Effets / attente d'une réponse ----
+      const hostToken = (pid, label) => {
+        const updated = playersRef.current.map(pl => (pl.id === pid && !pl.reminders.includes(label)) ? { ...pl, reminders: [...pl.reminders, label] } : pl);
+        playersRef.current = updated;
+        setPlayers(updated);
+        fnRef.current.broadcastGameState(updated);
+      };
+      const applyEffects = (effects) => (Array.isArray(effects) ? effects : []).forEach(ef => {
+        if (ef && ef.type === 'token' && ef.label) { const t = nameToPlayer(ef.target); if (t) hostToken(t.id, String(ef.label).slice(0, 30)); }
+      });
+      // Attend un message du joueur dans son cottage (un bot répond tout seul grâce à son cerveau)
+      const waitReply = (p, t0, ms) => new Promise(resolve => {
+        const thread = 'cot:own_' + vk(p.id);
+        M.waiting = { thread };
+        const iv = setInterval(() => {
+          const msgs = live.current.chat.filter(m => m.thread === thread && m.fromId === vk(p.id) && m.ts > t0);
+          if (msgs.length || Date.now() - t0 > ms || !M.running) { clearInterval(iv); M.waiting = null; resolve(msgs.map(m => m.text).join(' ') || null); }
+        }, 800);
+      });
+
+      // ---- Fin de partie ----
+      const checkWin = () => {
+        const L = live.current;
+        const demons = L.players.filter(p => teamOf(p) === 'demon');
+        const alive = L.players.filter(p => p.alive);
+        if (demons.length && !demons.some(p => p.alive)) {
+          const sw = alive.find(p => p.role === 'scarletwoman');
+          if (sw && alive.length >= 4) {
+            const updated = L.players.map(p => p.id === sw.id ? { ...p, role: demons[0].role } : p);
+            playersRef.current = updated; setPlayers(updated); fnRef.current.broadcastGameState(updated);
+            mjTell(sw, `Le Démon est tombé… c'est toi le Démon désormais (${ROLES_DB[demons[0].role] ? ROLES_DB[demons[0].role].name : 'Démon'}). Joue en silence.`);
+            mjLog(`${sw.name} (Marionnette/Scarlet Woman) devient le nouveau Démon`);
+            return null;
+          }
+          return 'good';
+        }
+        if (demons.some(p => p.alive) && alive.length <= 2) return 'evil';
+        return null;
+      };
+      const announceWin = (side) => {
+        M.over = true; M.running = false;
+        mjSay(side === 'good' ? '🎉 Le Démon est tombé ! Le village — le BIEN — remporte la partie. Bravo à tous !' : '😈 Il ne reste que deux âmes en vie… le MAL triomphe ! Que la nuit soit avec vous.');
+        setVictoryModal(side);
+        mjLog(side === 'good' ? 'Victoire du Bien' : 'Victoire du Mal');
+        playSound('bell');
+      };
+
+      // ---- Nuit ----
+      const wakeOrderFor = () => {
+        const L = live.current;
+        const key = L.dayNumber <= 1 ? 'firstNight' : 'otherNight';
+        return L.players.filter(p => p.alive && p.role && ROLES_DB[p.role] && ROLES_DB[p.role][key] > 0).sort((a, b) => ROLES_DB[a.role][key] - ROLES_DB[b.role][key]);
+      };
+      const evilInfo = async () => {
+        const L = live.current;
+        const demon = L.players.find(p => teamOf(p) === 'demon');
+        const minions = L.players.filter(p => teamOf(p) === 'minion');
+        for (const m of minions) {
+          if (!M.running) return;
+          fnRef.current.moveToCottage('own_' + vk(m.id)); await sleep(600);
+          mjTell(m, `Tu es un Sbire. Le Démon est ${demon ? demon.name : 'inconnu'}. Tes complices : ${minions.filter(x => x.id !== m.id).map(x => x.name).join(', ') || 'aucun autre'}.`);
+          await sleep(1500);
+        }
+        if (demon && M.running) {
+          fnRef.current.moveToCottage('own_' + vk(demon.id)); await sleep(600);
+          const bl = (L.demonBluffs || []).filter(Boolean).map(id => ROLES_DB[id] && ROLES_DB[id].name).filter(Boolean);
+          mjTell(demon, `Tu es le Démon. Tes Sbires : ${minions.map(x => x.name).join(', ') || 'aucun'}. Rôles absents de la partie que tu peux bluffer : ${bl.join(', ') || '—'}.`);
+          await sleep(1500);
+        }
+      };
+      const wakeStep = async (pid) => {
+        const p = live.current.players.find(x => x.id === pid);
+        if (!p || !p.alive) return;
+        const role = ROLES_DB[p.role];
+        mjLog(`Nuit ${live.current.dayNumber} : réveil de ${p.name} (${role.name})`);
+        fnRef.current.moveToCottage('own_' + vk(p.id));
+        await sleep(700);
+        const r1 = await askMj('wake', { p, role });
+        if (!r1) { mjTell(p, 'Tu te rendors.'); M.night.push(`${role.name} (${p.name}) : action non résolue (erreur)`); return; }
+        applyEffects(r1.effects);
+        const t0 = Date.now();
+        if (r1.message) mjTell(p, r1.message);
+        M.night.push(r1.log || `${role.name} (${p.name}) a été réveillé`);
+        if (r1.needs_reply) {
+          let reply = await waitReply(p, t0, p.isBot ? 45000 : 60000);
+          if (!reply && !p.isBot && M.running) {
+            mjTell(p, "Je t'attends : réponds-moi dans ce chat (le nom du joueur choisi, ou « personne »).");
+            reply = await waitReply(p, Date.now(), 40000);
+          }
+          const r2 = await askMj('resolve', { p, role, reply: reply || '(aucune réponse : choisis pour lui de façon neutre)' });
+          if (r2) { applyEffects(r2.effects); if (r2.message) mjTell(p, r2.message); M.night.push(r2.log || `${role.name} (${p.name}) a fait son choix`); }
+        }
+        await sleep(1000);
+      };
+      const dawn = async () => {
+        mjLog('Aube : résolution des morts');
+        const r = await askMj('dawn');
+        const deaths = (r && Array.isArray(r.deaths) ? r.deaths : []).map(nameToPlayer).filter(p => p && p.alive);
+        let updated = live.current.players.map(pl => ({
+          ...pl,
+          alive: deaths.some(d => d.id === pl.id) ? false : pl.alive,
+          reminders: (pl.reminders || []).filter(t => !['Empoisonné', 'Protégé', 'Mort ce soir', 'Cible Démon'].includes(t))
+        }));
+        playersRef.current = updated;
+        setPlayers(updated);
+        fnRef.current.broadcastGameState(updated);
+        fnRef.current.moveToCottage(null);
+        await sleep(1500);
+        fnRef.current.switchPhase();
+        await sleep(1800);
+        const names = deaths.map(d => d.name);
+        const narr = (r && r.narration) ? String(r.narration) : (names.length ? `Le jour se lève. ${names.join(' et ')} ${names.length > 1 ? 'ont été retrouvés morts' : 'a été retrouvé mort'}.` : "Le jour se lève : personne n'est mort cette nuit.");
+        mjSay(narr);
+        mjLog(names.length ? `Morts : ${names.join(', ')}` : 'Aucun mort cette nuit');
+        const w = checkWin();
+        if (w) announceWin(w);
+      };
+      const runNightAi = async () => {
+        if (M.busy) return;
+        M.busy = true;
+        try {
+          const n0 = live.current.dayNumber;
+          mjSay(n0 <= 1 ? pickOne(['🌙 La nuit tombe sur le village… Fermez les yeux. Je passe de cottage en cottage.', '🌙 Que la première nuit commence. Fermez les yeux, je viens vous voir un par un.']) : pickOne([`🌙 La nuit ${n0} tombe… fermez les yeux.`, '🌙 Le village s\'endort à nouveau. Je commence ma ronde.']));
+          M.night = [];
+          mjLog(`Nuit ${n0} : début de la ronde`);
+          if (n0 <= 1) await evilInfo();
+          for (const q of wakeOrderFor()) {
+            if (!M.running || live.current.phase !== 'night') break;
+            await wakeStep(q.id);
+          }
+          if (M.running && live.current.phase === 'night') await dawn();
+        } catch (e) { mjLog('Erreur MJ : ' + ((e && e.message) || e)); }
+        finally { M.busy = false; aiBump(); }
+      };
+
+      // ---- Jour ----
+      const startDayTimer = (sec) => { setDayTimerSeconds(sec); setIsTimerRunning(true); syncTimer(sec, true); M.timerStartedAt = Date.now(); };
+      const handlePendingAccusation = (acc) => {
+        const L = live.current;
+        const nom = L.players.find(p => p.id === acc.nominatorId);
+        const nee = L.players.find(p => p.id === acc.nomineeId);
+        let err = null;
+        if (!nom || !nee) err = 'joueur introuvable';
+        else if (!nom.alive) err = "l'accusateur doit être vivant";
+        else if (A.noms.by[vk(nom.id)]) err = `${nom.name} a déjà accusé aujourd'hui`;
+        else if (A.noms.on[vk(nee.id)]) err = `${nee.name} a déjà été accusé aujourd'hui`;
+        if (err) { mjSay(`Accusation refusée : ${err}.`); fnRef.current.clearPending(); mjLog(`Accusation refusée (${err})`); }
+        else { mjSay(`📜 ${nom.name} accuse ${nee.name} ! Que le village écoute…`); mjLog(`Accusation validée : ${nom.name} → ${nee.name}`); fnRef.current.startNomination(acc); }
+      };
+      const endDay = async () => {
+        if (M.busy) return;
+        M.busy = true;
+        try {
+          const L = live.current;
+          const blk = L.onTheBlock;
+          const victim = blk ? L.players.find(p => p.id === blk.playerId) : null;
+          mjSay('⏰ Le temps est écoulé. Le village doit trancher.');
+          await sleep(2500);
+          if (victim) {
+            mjSay(`⚖️ Le verdict tombe : ${victim.name} est exécuté !`);
+            fnRef.current.executePlayerOnBlock();
+            mjLog(`Exécution : ${victim.name}`);
+            await sleep(2500);
+            if (victim.role === 'saint') { announceWin('evil'); return; }
+          } else mjSay("Personne n'est exécuté aujourd'hui.");
+          const w = checkWin();
+          if (w) { announceWin(w); return; }
+          const alive = live.current.players.filter(p => p.alive);
+          if (!victim && alive.length === 3 && alive.some(p => p.role === 'mayor' && !(p.reminders || []).includes('Empoisonné'))) { announceWin('good'); return; }
+          await sleep(4000);
+          mjSay('🌙 Le soleil se couche… la nuit tombe, fermez les yeux.');
+          await sleep(1500);
+          fnRef.current.switchPhase();
+        } catch (e) { mjLog('Erreur MJ : ' + ((e && e.message) || e)); }
+        finally { M.busy = false; aiBump(); }
+      };
+      const answerChat = async (q) => {
+        M.dmBusy = true;
+        try {
+          const res = await askMj('chat', q);
+          if (res && res.reply) {
+            if (q.kind === 'private') sendChatAs(mjName(), 'host', String(res.reply).slice(0, 500), q.thread, q.label, q.members, true, mjFlag);
+            else mjSay(String(res.reply));
+          }
+        } finally { M.dmBusy = false; }
+      };
+
+      // ---- Boucle du MJ (toutes les 2 s) ----
+      const mjTickRef = useRef(null);
+      mjTickRef.current = () => {
+        const cfg = aiCfgRef.current;
+        if (!isStorytellerMode || !cfg.mjEnabled || !M.running || M.over) return;
+        const L = live.current;
+        if (!L.gameStarted) return;
+        if (L.victoryModal) { M.over = true; M.running = false; mjLog('Partie terminée'); return; }
+        if (A.mjq.length && !M.dmBusy) { answerChat(A.mjq.shift()); }
+        if (L.phase === 'night') {
+          const key = 'n' + L.dayNumber;
+          if (M.nightRun !== key && !M.busy) { M.nightRun = key; runNightAi(); }
+          return;
+        }
+        if (M.busy) return;
+        const dkey = 'd' + L.dayNumber;
+        if (M.dayInit !== dkey) {
+          M.dayInit = dkey; M.oneMin = false; M.endedDay = false; M.handledPending = null;
+          startDayTimer(Math.round((cfg.mjDayMin || 6) * 60));
+          mjSay(`☀️ Vous avez ${cfg.mjDayMin || 6} minutes pour discuter et accuser. Parlez, bluffez, cherchez le Démon.`);
+          mjLog(`Jour ${L.dayNumber} : débat ouvert (${cfg.mjDayMin || 6} min)`);
+          return;
+        }
+        if (L.pendingAccusation && !L.nomination.active) {
+          const key = JSON.stringify(L.pendingAccusation);
+          if (M.handledPending !== key) { M.handledPending = key; handlePendingAccusation(L.pendingAccusation); return; }
+        }
+        const nm = L.nomination;
+        if (!nm.active && nm.result && nm.startedAt && M.announcedResult !== nm.startedAt) {
+          M.announcedResult = nm.startedAt;
+          const r = nm.result;
+          mjSay(`⚖️ ${r.nomineeName} : ${r.total} voix sur ${r.required} requises — ${r.onBlock ? 'il est sur le billot.' : 'il est épargné.'}`);
+          mjLog(`Vote : ${r.nomineeName} ${r.total}/${r.required}`);
+          return;
+        }
+        if (L.isTimerRunning && L.dayTimerSeconds <= 60 && L.dayTimerSeconds > 54 && !M.oneMin) { M.oneMin = true; mjSay('⏳ Il reste une minute : accusez avant qu\'il ne soit trop tard !'); return; }
+        if (!L.isTimerRunning && L.dayTimerSeconds === 0 && !nm.active && !M.endedDay && Date.now() - M.timerStartedAt > 8000) { M.endedDay = true; endDay(); }
+      };
+      useEffect(() => {
+        const iv = setInterval(() => { if (mjTickRef.current) mjTickRef.current(); }, 2000);
+        return () => clearInterval(iv);
+      }, []);
+
+      // ---- Lancement : le MJ IA choisit les rôles selon le script, tire les bluffs et lance la partie ----
+      const validRoles = (ids, n) => {
+        const scriptIds = new Set(live.current.currentScript.roles);
+        const dist = PLAYER_DISTRIBUTION[n];
+        if (!dist || !Array.isArray(ids) || ids.length !== n || new Set(ids).size !== n) return false;
+        if (!ids.every(id => scriptIds.has(id) && ROLES_DB[id])) return false;
+        const cnt = (t) => ids.filter(id => ROLES_DB[id].team === t).length;
+        const baron = ids.includes('baron') ? 2 : 0;
+        return cnt('demon') === dist.demon && cnt('minion') === dist.minion && cnt('outsider') === dist.outsider + baron && cnt('townsfolk') === dist.townsfolk - baron;
+      };
+      const startAiGame = async () => {
+        if (M.busy || live.current.gameStarted) return;
+        const L = live.current;
+        if (L.players.length < 5) { mjLog('Il faut au moins 5 joueurs pour commencer.'); return; }
+        M.busy = true; M.running = true; M.over = false; M.nightRun = null; M.dayInit = null;
+        try {
+          mjSay(`🎩 Bienvenue au village ! Je suis ${mjName()}, votre Conteur. Je prépare la partie (${L.currentScript.name})…`);
+          mjLog('Choix des rôles…');
+          let res = await askMj('setup');
+          let ids = res && res.roles;
+          if (!validRoles(ids, L.players.length)) { mjLog('Rôles proposés invalides : répartition automatique'); fnRef.current.handleAutoDistributeRoles(); ids = null; }
+          let roles;
+          if (ids) {
+            const shuffled = [...ids].sort(() => Math.random() - 0.5);
+            const updated = L.players.map((p, i) => ({ ...p, role: shuffled[i] }));
+            playersRef.current = updated; setPlayers(updated);
+            roles = shuffled;
+            // l'Ivrogne (bot) croit être un villageois absent de la partie
+            updated.filter(p => p.role === 'drunk' && p.isBot).forEach(p => {
+              const fake = L.currentScript.roles.map(id => ROLES_DB[id]).filter(r => r && r.team === 'townsfolk' && !roles.includes(r.id));
+              if (fake.length) A.meta[vk(p.id)] = { ...(A.meta[vk(p.id)] || {}), believedRole: pickOne(fake).id };
+            });
+          } else roles = null;
+          await sleep(600);
+          // bluffs du Démon : propositions du MJ si valides, sinon tirage au sort
+          const inGame = new Set((ids || []));
+          const good = L.currentScript.roles.map(id => ROLES_DB[id]).filter(r => r && (r.team === 'townsfolk' || r.team === 'outsider') && !inGame.has(r.id));
+          let bl = (res && Array.isArray(res.bluffs) ? res.bluffs : []).filter(id => good.some(r => r.id === id));
+          if (bl.length < 3) bl = [...bl, ...good.map(r => r.id).filter(id => !bl.includes(id)).sort(() => Math.random() - 0.5)].slice(0, 3);
+          setDemonBluffs([bl[0] || null, bl[1] || null, bl[2] || null]);
+          await sleep(400);
+          for (let k = 0; k < 20 && !(playersRef.current.length && playersRef.current.every(p => p.role)); k++) await sleep(150);
+          fnRef.current.handleStartGame();
+          mjLog('Partie lancée : la première nuit commence');
+        } catch (e) { mjLog('Erreur MJ : ' + ((e && e.message) || e)); M.running = false; }
+        finally { M.busy = false; aiBump(); }
+      };
+      const setMjRunning = (on) => { M.running = on; if (on) { M.over = false; M.nightRun = null; M.dayInit = null; M.endedDay = false; } mjLog(on ? 'Pilote automatique activé' : 'Tu as repris la main'); };
+
+      const setMjEnabled = (on) => {
+        setAiCfg(c => ({ ...c, mjEnabled: on }));
+        if (on) {
+          const st = { ...storyteller, name: aiCfg.mjName || 'Maître Corbeau', avatar: '🎩' };
+          setStoryteller(st);
+          broadcastGameState(playersRef.current, phase, gameStarted, { storyteller: st });
+        } else M.running = false;
+        aiBump();
+      };
+      useEffect(() => {
+        if (isStorytellerMode && aiCfg.mjEnabled && storyteller.name !== aiCfg.mjName && !gameStarted) {
+          const st = { ...storyteller, name: aiCfg.mjName };
+          setStoryteller(st);
+          broadcastGameState(playersRef.current, phase, gameStarted, { storyteller: st });
+        }
+      }, [aiCfg.mjName, aiCfg.mjEnabled]);
+
+      // ---- Changer de MJ avant la partie : un joueur humain reprend réellement les rênes, ou un bot devient MJ IA ----
+      const transferHost = (target) => {
+        if (gameStarted || !roomCode || !target || target.isBot) return;
+        const demoted = { id: Date.now() + Math.random(), name: storyteller.name, avatar: storyteller.avatar, role: null, hypothesisRole: null, alive: true, ghostVote: true, ghostVotes: 1, reminders: [], inRoom: 'square', micActive: true, isBot: false };
+        const newSt = { name: target.name, avatar: target.avatar, cameraActive: false, micActive: true, currentRoom: 'square' };
+        const newList = [...playersRef.current.filter(p => p.id !== target.id), demoted];
+        playersRef.current = newList;
+        fb.del(roomCode, 'joins/' + vk(target.id));
+        firebaseSync.updateRoom(roomCode, { players: newList, storyteller: newSt, hostTransfer: { toKey: vk(target.id), ts: Date.now() } });
+        setStoryteller(newSt);
+        setPlayers(newList);
+        setSwitchStorytellerModalOpen(false);
+        setAiCfg(c => ({ ...c, mjEnabled: false }));
+        setIsStorytellerMode(false);
+        setCurrentUserId(demoted.id);
+        playSound('bell');
+      };
+      const promoteBotToMj = (bot) => {
+        if (gameStarted || !bot) return;
+        const updated = playersRef.current.filter(p => p.id !== bot.id);
+        playersRef.current = updated;
+        setPlayers(updated);
+        A.removed[bot.id] = true;
+        delete A.mem[vk(bot.id)];
+        delete A.meta[vk(bot.id)];
+        if (roomCode) ['positions', 'votes', 'hands', 'joins'].forEach(k => fb.del(roomCode, `${k}/${vk(bot.id)}`));
+        const st = { ...storyteller, name: bot.name, avatar: bot.avatar };
+        setStoryteller(st);
+        setAiCfg(c => ({ ...c, mjEnabled: true, mjName: bot.name }));
+        broadcastGameState(updated, phase, gameStarted, { storyteller: st });
+        setSwitchStorytellerModalOpen(false);
+        playSound('bell');
       };
 
       const togglePlayerLife = (playerId) => {
@@ -2533,7 +3065,7 @@
       const majorityRequired = Math.ceil(aliveCount / 2);
 
       // ==========================================
-      live.current = { players, phase, dayNumber, nomination, onTheBlock, gameStarted, demonBluffs, storyteller, currentScript, hands, speaker, dayTimerSeconds, majorityRequired: Math.ceil(players.filter(p => p.alive).length / 2) };
+      live.current = { players, phase, dayNumber, nomination, onTheBlock, gameStarted, demonBluffs, storyteller, currentScript, hands, speaker, dayTimerSeconds, isTimerRunning, chat: chatMessages, nightState, pendingAccusation, victoryModal, selectedScriptId, majorityRequired: Math.ceil(players.filter(p => p.alive).length / 2) };
 
       // Mise en page adaptative + ordre de réveil de la nuit (Conteur) + caméra du Conteur visible seulement dans son salon
       const mainRef = useRef(null);
@@ -2560,6 +3092,8 @@
           .sort((a, b) => ROLES_DB[a.role][nightKey] - ROLES_DB[b.role][nightKey])
           .forEach((p, i) => { nightRanks[p.id] = i + 1; });
       }
+
+      fnRef.current = { switchPhase, moveToCottage, executePlayerOnBlock, startNomination, clearPending, handleStartGame, handleAutoDistributeRoles, broadcastGameState };
 
       // RENDU 1 : ÉCRAN DE CONNEXION / LOBBY
       // ==========================================
@@ -2625,13 +3159,18 @@
                       className="w-full px-3 py-2 rounded-xl bg-stone-900 border border-stone-700 focus:border-amber-500 focus:outline-none text-stone-200"
                     >
                       <optgroup label="Scripts Officiels">
-                        <option value="tb">Trouble Brewing (Recommandé)</option>
-                        <option value="bmr">Bad Moon Rising</option>
-                        <option value="snv">Sects & Violets</option>
+                        <option value="tb">⭐ Débutant · Trouble Brewing (Recommandé)</option>
+                        <option value="bmr">⭐⭐ Intermédiaire · Bad Moon Rising</option>
+                        <option value="snv">⭐⭐⭐ Expert · Sects & Violets</option>
                       </optgroup>
                       <optgroup label="Teensyville (5-6 Joueurs)">
-                        <option value="ngj">Teensyville: No Greater Joy</option>
-                        <option value="luf">Teensyville: Laissez un Faire</option>
+                        <option value="ngj">⭐⭐ Intermédiaire · Teensyville: No Greater Joy</option>
+                        <option value="luf">⭐⭐⭐ Expert · Teensyville: Laissez un Faire</option>
+                      </optgroup>
+                      <optgroup label="Scénarios populaires (tous niveaux)">
+                        {['x_init', 'x_small', 'x_rumeurs', 'x_meca', 'x_macabre', 'x_chaos'].map(k => (
+                          <option key={k} value={k}>{LEVEL_LABEL[SCRIPT_LEVELS[k]]} · {SCRIPTS_DATA[k].name}</option>
+                        ))}
                       </optgroup>
                     </select>
                   </div>
@@ -2773,12 +3312,13 @@
       // RENDU 2 : APPLICATION PRINCIPALE SUR 1 SEULE PAGE
       // ==========================================
       return (
-        <div className="h-screen w-screen flex flex-col font-sans select-none bg-[#100a14] text-stone-100 overflow-hidden relative">
+        <div style={bgStyleOf(bgPref)} className="h-screen w-screen flex flex-col font-sans select-none bg-[#100a14] text-stone-100 overflow-hidden relative">
           <div className="absolute inset-0 pointer-events-none opacity-40 bg-[radial-gradient(#4a1d4a_1px,transparent_1px)] [background-size:24px_24px]" />
 
           {/* BARRE DU VILLAGE : discuter publiquement (les bulles apparaissent près des sièges, les bots l'entendent) */}
           {gameStarted && phase === 'day' && (
             <div className="fixed bottom-3 left-1/2 -translate-x-1/2 z-40 w-[min(24rem,58vw)] flex items-center gap-1.5 bg-stone-950/95 border border-stone-700 rounded-2xl px-2 py-1.5 shadow-2xl">
+              {isStorytellerMode && A.alert && (<span className="text-[9px] text-red-300 max-w-[35%] truncate" title={A.alert}>⚠ IA : {A.alert}</span>)}
               <input
                 type="text"
                 placeholder="💬 Dire quelque chose au village…"
@@ -2824,9 +3364,9 @@
                 <div className="flex items-center justify-between px-4 py-2.5 border-b border-stone-800">
                   <h3 className="font-serif font-bold text-base text-fuchsia-300">🤖 Bots IA {aiCfg.enabled ? <span className="text-emerald-400 text-[11px] font-mono">● actifs</span> : <span className="text-stone-500 text-[11px] font-mono">○ désactivés</span>}</h3>
                   <div className="flex items-center gap-2">
-                    {['config', 'bots', 'journal'].map(t => (
+                    {['config', 'bots', 'mj', 'journal'].map(t => (
                       <button key={t} onClick={() => setAiTab(t)} className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border ${aiTab === t ? 'bg-fuchsia-600 border-fuchsia-300 text-white' : 'bg-stone-900 border-stone-700 text-stone-300'}`}>
-                        {t === 'config' ? '⚙️ Config' : t === 'bots' ? '🎭 Bots & nuit' : '📜 Journal'}
+                        {t === 'config' ? '⚙️ Config' : t === 'bots' ? '🎭 Bots & nuit' : t === 'mj' ? '🎩 MJ IA' : '📜 Journal'}
                       </button>
                     ))}
                     <button onClick={() => setAiPanelOpen(false)} className="text-stone-400 hover:text-white"><Icon name="X" className="w-4 h-4" /></button>
@@ -2997,6 +3537,42 @@
                     </>
                   )}
 
+                  {aiTab === 'mj' && (
+                    <>
+                      <label className="flex items-center gap-2 p-2 rounded-xl bg-stone-900 border border-stone-800 cursor-pointer">
+                        <input type="checkbox" checked={aiCfg.mjEnabled} onChange={(e) => setMjEnabled(e.target.checked)} />
+                        <span className="font-bold text-stone-100">🎩 MJ IA : un bot anime la partie de bout en bout</span>
+                      </label>
+                      <p className="text-[10px] text-fuchsia-300 leading-snug">Le MJ IA choisit les rôles selon le script, lance la partie, réveille chaque joueur dans son cottage (infos, questions, relances), tient le chrono, valide les accusations, annonce les exécutions, passe de la nuit au jour et dit qui a gagné. Il répond aussi aux messages qu'on lui écrit. Ton navigateur sert de moteur : garde cet onglet ouvert. Pour jouer toi-même, ouvre un 2ᵉ onglet et rejoins la salle avec le code <strong>{roomCode}</strong>.</p>
+                      <div className="grid sm:grid-cols-3 gap-2 p-2.5 rounded-xl bg-stone-900 border border-stone-800">
+                        <label className="space-y-0.5"><span className="text-stone-300">Nom du MJ</span>
+                          <input type="text" value={aiCfg.mjName} onChange={(e) => setAiCfg(c => ({ ...c, mjName: e.target.value }))} className="w-full px-2 py-1 bg-stone-950 border border-stone-700 rounded-lg text-[11px] text-white focus:outline-none select-text" /></label>
+                        <label className="space-y-0.5"><span className="text-stone-300">Fournisseur du MJ</span>
+                          <select value={aiCfg.mjProvider} onChange={(e) => setAiCfg(c => ({ ...c, mjProvider: e.target.value }))} className="w-full px-2 py-1 bg-stone-950 border border-stone-700 rounded-lg text-[11px] text-white">
+                            <option value="">Par défaut</option><option value="claude">Claude</option><option value="openai">ChatGPT</option><option value="gemini">Gemini</option><option value="custom">Compatible OpenAI</option>
+                          </select></label>
+                        <label className="space-y-0.5"><span className="text-stone-300">Durée du jour : {aiCfg.mjDayMin} min</span>
+                          <input type="range" min="1" max="20" value={aiCfg.mjDayMin} onChange={(e) => setAiCfg(c => ({ ...c, mjDayMin: Number(e.target.value) }))} className="w-full accent-fuchsia-500" /></label>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {!gameStarted ? (
+                          <button onClick={startAiGame} disabled={!aiCfg.mjEnabled || players.length < 5} className="px-3 py-1.5 bg-fuchsia-600 hover:bg-fuchsia-500 disabled:opacity-40 text-white rounded-lg font-bold">▶ Lancer la partie (le MJ IA choisit les rôles)</button>
+                        ) : A.mj.running ? (
+                          <button onClick={() => setMjRunning(false)} className="px-3 py-1.5 bg-stone-800 hover:bg-stone-700 border border-stone-500 text-white rounded-lg font-bold">⏸ Reprendre la main</button>
+                        ) : (
+                          <button onClick={() => setMjRunning(true)} disabled={!aiCfg.mjEnabled} className="px-3 py-1.5 bg-fuchsia-600 hover:bg-fuchsia-500 disabled:opacity-40 text-white rounded-lg font-bold">▶ Activer le pilote automatique</button>
+                        )}
+                        {!gameStarted && players.length < 5 && <span className="text-[11px] text-amber-300">Il faut au moins 5 joueurs ({players.length} pour l'instant).</span>}
+                        {A.mj.status && <span className="text-[11px] text-amber-300">{A.mj.status}</span>}
+                      </div>
+                      <div className="space-y-1">
+                        {A.mj.log.map((e, i) => (
+                          <div key={i} className="text-[10px] text-stone-300 p-1 rounded bg-stone-900 border border-stone-800"><span className="font-mono text-stone-500">{new Date(e.ts).toLocaleTimeString()}</span> {e.txt}</div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+
                   {aiTab === 'journal' && (
                     <div className="space-y-1">
                       <div className="text-[10px] text-stone-500">Appels : {A.calls} · Erreurs consécutives : {A.errStreak}</div>
@@ -3010,6 +3586,66 @@
                     </div>
                   )}
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* ANNONCES DU MJ (IA) : bannière visible par tous */}
+          {(() => {
+            const mm = [...chatMessages].reverse().find(x => x.mj && x.thread === 'pub');
+            return mm && nowTick - mm.ts < 10000 ? (
+              <div className="fixed top-16 left-1/2 -translate-x-1/2 z-[65] max-w-md w-[92vw] bg-stone-950/95 border-2 border-amber-400 rounded-2xl px-4 py-2 shadow-2xl text-xs text-stone-100 pointer-events-none">
+                <span className="font-bold text-amber-300">🎩 {mm.from}</span> — {mm.text}
+              </div>
+            ) : null;
+          })()}
+
+          {/* FOND D'ÉCRAN PERSONNALISÉ (propre à chaque joueur, enregistré dans ce navigateur) */}
+          {bgOpen && (
+            <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in">
+              <div className="bg-stone-950 border-2 border-amber-500 rounded-3xl max-w-md w-full p-4 shadow-2xl space-y-3 text-xs max-h-[90vh] overflow-y-auto">
+                <div className="flex items-center justify-between border-b border-stone-800 pb-2">
+                  <h4 className="font-serif font-bold text-base text-amber-200">🖼️ Mon fond d'écran</h4>
+                  <button onClick={() => setBgOpen(false)} className="text-stone-400 hover:text-white"><Icon name="X" className="w-4 h-4" /></button>
+                </div>
+                {(() => {
+                  const apply = (next) => { setBgPref(next); try { localStorage.setItem('botc_bg', JSON.stringify(next)); setBgMsg(''); } catch (e) { setBgMsg('⚠ Image trop lourde pour être mémorisée : elle sera perdue au rechargement.'); } };
+                  return (
+                    <>
+                      <div className="grid grid-cols-4 gap-1.5">
+                        {BG_PRESETS.map(([n, v]) => (
+                          <button key={n} onClick={() => apply({ ...bgPref, type: 'preset', value: v })} title={n} style={{ background: v }} className={`h-12 rounded-xl border-2 text-[9px] font-bold text-white/90 flex items-end justify-center pb-0.5 ${bgPref.value === v ? 'border-amber-400' : 'border-stone-700'}`}>{n}</button>
+                        ))}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-stone-300">Couleur unie :</span>
+                        <input type="color" value={/^#[0-9a-f]{6}$/i.test(bgPref.value) ? bgPref.value : '#100a14'} onChange={(e) => apply({ ...bgPref, type: 'color', value: e.target.value })} className="w-10 h-7 bg-transparent border border-stone-700 rounded" />
+                      </div>
+                      <div className="space-y-1">
+                        <span className="text-stone-300 block">Image : depuis ton ordinateur ou une adresse web</span>
+                        <div className="flex gap-1.5">
+                          <label className="px-3 py-1.5 bg-stone-800 hover:bg-stone-700 border border-stone-600 rounded-lg text-stone-100 cursor-pointer">
+                            📁 Choisir un fichier
+                            <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
+                              const f = e.target.files && e.target.files[0];
+                              e.target.value = '';
+                              if (!f) return;
+                              try { apply({ ...bgPref, type: 'image', value: await imageToDataUrl(f) }); } catch (err) { setBgMsg('✘ ' + err.message); }
+                            }} />
+                          </label>
+                          <input type="text" value={bgUrl} onChange={(e) => setBgUrl(e.target.value)} placeholder="https://…/image.jpg" className="flex-1 min-w-0 px-2 py-1 bg-stone-900 border border-stone-700 rounded-lg text-white focus:outline-none select-text" />
+                          <button onClick={() => { if (bgUrl.trim()) apply({ ...bgPref, type: 'image', value: bgUrl.trim() }); }} className="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-stone-950 rounded-lg font-bold">OK</button>
+                        </div>
+                      </div>
+                      {bgPref.type === 'image' && (
+                        <label className="space-y-0.5 block"><span className="text-stone-300">Assombrir l'image (lisibilité) : {Math.round(bgPref.dim * 100)} %</span>
+                          <input type="range" min="0" max="90" value={Math.round(bgPref.dim * 100)} onChange={(e) => apply({ ...bgPref, dim: Number(e.target.value) / 100 })} className="w-full accent-amber-500" /></label>
+                      )}
+                      {bgMsg && <p className="text-amber-300">{bgMsg}</p>}
+                      <button onClick={() => apply({ type: 'preset', value: '#100a14', dim: 0.55 })} className="px-3 py-1.5 bg-stone-900 hover:bg-stone-800 border border-stone-700 rounded-lg text-stone-300">↺ Remettre le fond d'origine</button>
+                    </>
+                  );
+                })()}
               </div>
             </div>
           )}
@@ -3306,14 +3942,17 @@
               {isStorytellerMode && (
                 <button
                   onClick={() => { setAiPanelOpen(true); setNightUnseen(0); }}
-                  className="relative p-1 rounded-lg bg-stone-900 border border-fuchsia-700 text-fuchsia-300 hover:text-fuchsia-100 transition"
-                  title="Bots IA : clés API, personnalités, informations de nuit"
+                  className={`relative p-1 rounded-lg bg-stone-900 border transition ${A.alert ? 'border-red-500 text-red-300 animate-pulse' : 'border-fuchsia-700 text-fuchsia-300 hover:text-fuchsia-100'}`}
+                  title={A.alert ? `⚠ IA en pause : ${A.alert}` : 'Bots IA & MJ IA : clés API, personnalités, MJ automatique'}
                 >
                   <span>🤖</span>
                   {nightUnseen > 0 && <span className="absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] px-0.5 bg-fuchsia-500 rounded-full text-[9px] font-black text-white flex items-center justify-center animate-pulse">{nightUnseen}</span>}
                 </button>
               )}
 
+              <button onClick={() => setBgOpen(true)} className="p-1 rounded-lg bg-stone-900 border border-stone-700 text-stone-300 hover:text-amber-300 transition" title="Mon fond d'écran">
+                <span>🖼️</span>
+              </button>
               <button
                 onClick={() => setTtsOn(v => !v)}
                 className={`p-1 rounded-lg border transition ${ttsOn ? 'bg-stone-900 border-stone-700 text-amber-300' : 'bg-stone-950 border-stone-800 text-stone-500'}`}
@@ -3742,6 +4381,9 @@
                           {gameStarted ? (phase === 'day' ? `Jour ${dayNumber}` : `Nuit ${dayNumber}`) : 'Salon d’attente'}
                         </span>
                         
+                        <div className="mt-0.5 text-[9px] text-amber-300/90 font-semibold truncate max-w-[90%]" title={`${currentScript.name || 'Script personnalisé'}${SCRIPT_LEVELS[currentScript.id] ? ' · ' + LEVEL_LABEL[SCRIPT_LEVELS[currentScript.id]] : ''}`}>
+                          📜 {currentScript.name || 'Script personnalisé'}{SCRIPT_LEVELS[currentScript.id] ? ' ' + '⭐'.repeat(SCRIPT_LEVELS[currentScript.id]) : ''}
+                        </div>
                         {nomination.result && (
                           <div className="mt-0.5 text-[9px] font-bold text-amber-300 leading-tight">
                             ⚖️ {nomination.result.nomineeName} : {nomination.result.total}/{nomination.result.required}<br />
@@ -3950,18 +4592,20 @@
 
                           <div className={`absolute top-1/2 -translate-y-1/2 flex flex-col gap-1 z-30 pointer-events-auto ${isRightHalf ? 'right-full mr-1.5 items-end' : 'left-full ml-1.5 items-start'}`}>
                             {tokens.map((remLabel, rIdx) => {
-                              const preset = REMINDER_PRESETS.find(pr => pr.label === remLabel) || {
+                              const cust = parseCustomToken(remLabel);
+                              const preset = cust ? null : (REMINDER_PRESETS.find(pr => pr.label === remLabel) || {
                                 label: remLabel, code: 'RAPP', icon: '🏷️', color: 'bg-amber-950', border: 'border-amber-400'
-                              };
+                              });
                               return (
                                 <div
                                   key={rIdx}
                                   onClick={(e) => { e.stopPropagation(); removeReminder(p, rIdx); }}
-                                  className={`h-5 px-1.5 rounded-md ${preset.color} border ${preset.border} flex items-center gap-1 shadow-lg cursor-pointer hover:scale-110 transition whitespace-nowrap`}
-                                  title={`${preset.label} (cliquer pour retirer)`}
+                                  style={cust ? { background: cust.bg, borderColor: 'rgba(255,255,255,0.7)' } : undefined}
+                                  className={`h-5 px-1.5 rounded-md ${cust ? 'border' : `${preset.color} border ${preset.border}`} flex items-center gap-1 shadow-lg cursor-pointer hover:scale-110 transition whitespace-nowrap`}
+                                  title={`${cust ? cust.text : preset.label} (cliquer pour retirer)`}
                                 >
-                                  <span className="text-[11px] leading-none">{preset.icon}</span>
-                                  <span className="text-[8px] font-black text-white tracking-wider font-mono">{preset.code}</span>
+                                  {!cust && <span className="text-[11px] leading-none">{preset.icon}</span>}
+                                  <span className={`${cust ? 'text-[9px] max-w-[90px] truncate' : 'text-[8px]'} font-black text-white tracking-wider font-mono`}>{cust ? cust.text : preset.code}</span>
                                 </div>
                               );
                             })}
@@ -4047,7 +4691,7 @@
             }`}>
               <div className="flex items-center justify-between border-b border-stone-800 pb-2 mb-2">
                 <div>
-                  <h3 className="font-serif font-bold text-sm text-amber-200">{currentScript.name}</h3>
+                  <h3 className="font-serif font-bold text-sm text-amber-200">{currentScript.name || 'Script personnalisé'} <span className="text-[10px] font-mono text-amber-400/80">{SCRIPT_LEVELS[currentScript.id] ? LEVEL_LABEL[SCRIPT_LEVELS[currentScript.id]] : (currentScript.id === 'custom' ? 'Perso' : '')}</span></h3>
                 </div>
                 <button onClick={() => setIsScriptDrawerOpen(false)} className="text-stone-400 hover:text-white">
                   <Icon name="X" className="w-4 h-4" />
@@ -4229,7 +4873,7 @@
                 </button>
               </div>
 
-              <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
+              <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
                 {[
                   { id: 'drunk', label: 'Bourré / Ivre', code: 'IVRE', icon: '🍺' },
                   { id: 'poisoned', label: 'Empoisonné', code: 'POIS', icon: '🧪' },
@@ -4252,6 +4896,44 @@
                     </div>
                   </button>
                 ))}
+              </div>
+
+              <div className="space-y-1.5 pt-2 border-t border-stone-800">
+                <div className="text-[10px] uppercase font-bold text-amber-300">✏️ Créer mon jeton</div>
+                <div className="flex gap-1.5">
+                  <input
+                    type="text"
+                    maxLength={14}
+                    value={customTokText}
+                    onChange={(e) => setCustomTokText(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && customTokText.trim()) { const lab = encodeToken(customTokColor, customTokText.trim()); const sv = [lab, ...savedTokens.filter(x => x !== lab)].slice(0, 12); setSavedTokens(sv); try { localStorage.setItem('botc_tokens', JSON.stringify(sv)); } catch (er) {} addReminder(reminderPickerModal, lab); setCustomTokText(''); } }}
+                    placeholder="Texte du jeton (ex : Faux rôle)"
+                    className="flex-1 min-w-0 px-2 py-1 bg-stone-900 border border-stone-700 rounded-lg text-xs text-white focus:outline-none select-text"
+                  />
+                  <button
+                    onClick={() => { if (!customTokText.trim()) return; const lab = encodeToken(customTokColor, customTokText.trim()); const sv = [lab, ...savedTokens.filter(x => x !== lab)].slice(0, 12); setSavedTokens(sv); try { localStorage.setItem('botc_tokens', JSON.stringify(sv)); } catch (er) {} addReminder(reminderPickerModal, lab); setCustomTokText(''); }}
+                    className="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-stone-950 rounded-lg text-xs font-bold"
+                  >
+                    Ajouter
+                  </button>
+                </div>
+                <div className="flex flex-wrap items-center gap-1">
+                  {CUSTOM_COLORS.map(([hex, nm]) => (
+                    <button key={hex} onClick={() => setCustomTokColor(hex)} title={nm} style={{ background: hex }} className={`w-5 h-5 rounded-full border-2 ${customTokColor === hex ? 'border-white scale-110' : 'border-stone-600'}`} />
+                  ))}
+                  <input type="color" value={customTokColor} onChange={(e) => setCustomTokColor(e.target.value)} className="w-7 h-6 bg-transparent border border-stone-700 rounded" title="Autre couleur" />
+                  <span style={{ background: customTokColor }} className="ml-1 h-5 px-1.5 rounded-md border border-white/70 flex items-center text-[9px] font-black text-white font-mono max-w-[110px] truncate">{customTokText || 'Aperçu'}</span>
+                </div>
+                {savedTokens.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {savedTokens.map(lab => {
+                      const c = parseCustomToken(lab);
+                      return c ? (
+                        <button key={lab} onClick={() => addReminder(reminderPickerModal, lab)} style={{ background: c.bg }} className="h-5 px-1.5 rounded-md border border-white/70 text-[9px] font-black text-white font-mono hover:scale-110 transition max-w-[110px] truncate" title="Réutiliser ce jeton">{c.text}</button>
+                      ) : null;
+                    })}
+                  </div>
+                )}
               </div>
 
               <div className="pt-2 text-right border-t border-stone-800">
@@ -4732,18 +5414,27 @@
                   </button>
                 </div>
 
+                <div className="p-2 rounded-xl bg-fuchsia-950/40 border border-fuchsia-700 space-y-1.5 text-xs">
+                  <div className="font-bold text-fuchsia-200">🤖 Confier la partie à un MJ IA</div>
+                  <div className="flex gap-1.5">
+                    <input type="text" value={aiCfg.mjName} onChange={(e) => setAiCfg(c => ({ ...c, mjName: e.target.value }))} className="flex-1 min-w-0 px-2 py-1 bg-stone-900 border border-stone-700 rounded-lg text-white focus:outline-none select-text" />
+                    <button onClick={() => { setMjEnabled(true); setSwitchStorytellerModalOpen(false); }} className="px-2.5 py-1 bg-fuchsia-600 hover:bg-fuchsia-500 text-white rounded-lg font-bold">Activer</button>
+                  </div>
+                  <p className="text-[10px] text-stone-400 leading-snug">Ou choisis ci-dessous : un <strong>joueur humain</strong> reprend réellement la partie sur son appareil (tu deviens joueur), un <strong>bot</strong> devient le MJ IA. Possible uniquement avant le lancement.</p>
+                </div>
+
                 <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
                   {players.map(p => (
                     <button
                       key={p.id}
-                      onClick={() => handlePromoteToStoryteller(p)}
+                      onClick={() => (p.isBot ? promoteBotToMj(p) : transferHost(p))}
                       className="w-full p-2 rounded-xl bg-stone-900 border border-stone-800 hover:border-amber-400 flex items-center justify-between text-left transition"
                     >
                       <div className="flex items-center gap-2">
                         <span className="text-lg">{p.avatar}</span>
                         <span className="text-xs font-bold text-stone-200">{p.name}</span>
                       </div>
-                      <span className="text-[10px] font-bold text-amber-400">Promouvoir →</span>
+                      <span className="text-[10px] font-bold text-amber-400">{p.isBot ? 'Faire MJ IA →' : 'Passer la main →'}</span>
                     </button>
                   ))}
                 </div>
