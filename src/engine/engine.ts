@@ -92,7 +92,7 @@ export const moveSeat = (s: GameState, seatId: string, toIndex: number) => {
 // Outils
 // ---------------------------------------------------------------------------
 
-export const tag = (s: GameState) => (s.phase === 'night' ? `N${s.day}` : s.phase === 'day' ? `J${s.day}` : s.phase === 'ended' ? 'Fin' : 'Lobby');
+export const tag = (s: GameState) => (s.phase === 'lobby' && s.seats.some(x => x.role) ? 'N1' : s.phase === 'night' ? `N${s.day}` : s.phase === 'day' ? `J${s.day}` : s.phase === 'ended' ? 'Fin' : 'Lobby');
 export const seatById = (s: GameState, id: string | null | undefined) => s.seats.find(x => x.id === id);
 const mustSeat = (s: GameState, id: string) => seatById(s, id) ?? fail('Joueur introuvable.');
 const nameOf = (s: GameState, id: string | null | undefined) => seatById(s, id)?.name ?? '?';
