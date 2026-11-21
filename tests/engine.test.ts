@@ -66,7 +66,7 @@ describe('Première nuit : informations', () => {
     const s = rig(['empath', 'poisoner', 'chef', 'soldier', 'imp']);
     playNight(s, { poisoner: ['Dov'] });
     const m = s.privateLog[id(s, 'Ada')].find(x => x.source === 'empath')!;
-    expect(m.info).toEqual({ kind: 'number', value: 2 }); // voisins : Bram (Sbire) et Elsa (Démon)
+    expect(m.info).toMatchObject({ kind: 'number', value: 2 }); // voisins : Bram (Sbire) et Elsa (Démon)
   });
 
   it("Empathe empoisonné : reçoit une information fausse", () => {

@@ -22,12 +22,12 @@ export interface Seat {
 /** Information structurée remise par le Conteur. Toujours vérifiable par le moteur. */
 export type InfoPayload =
   | { kind: 'pair-role'; players: [string, string]; role: RoleId | null; none?: boolean }
-  | { kind: 'number'; value: number }
+  | { kind: 'number'; value: number; players?: string[] }
   | { kind: 'yesno'; value: boolean; players: string[] }
   | { kind: 'role-of'; player: string; role: RoleId }
   | { kind: 'evil-team'; demon: string | null; minions: string[] }
   | { kind: 'demon-intro'; minions: string[]; bluffs: RoleId[] }
-  | { kind: 'grimoire'; seats: Array<{ id: string; role: RoleId | null; alive: boolean; poisoned: boolean; drunk: boolean }> }
+  | { kind: 'grimoire'; seats: Array<{ id: string; role: RoleId | null; alive: boolean; isPoisoned: boolean; isDrunk: boolean }> }
   | { kind: 'role-change'; role: RoleId }
   | { kind: 'text' };
 

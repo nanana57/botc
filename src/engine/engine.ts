@@ -358,7 +358,8 @@ const resolveStep = (s: GameState, seat: Seat, role: RoleId, data: StepData): bo
   const impaired = isImpaired(s, seat) || seat.role !== role;
   const script = SCRIPTS.find(x => x.id === s.settings.scriptId)!;
   const others = s.seats.filter(x => x.id !== seat.id);
-  const scriptOf = (team: string) => script.roles.filter(r => ROLES[r].team === team);
+  // Une fausse info ne doit jamais souffler à l'Ivrogne qu'il est l'Ivrogne
+  const scriptOf = (team: string) => script.roles.filter(r => ROLES[r].team === team && !(seat.role === 'drunk' && r === 'drunk'));
 
   const deliver = (opts: Array<{ label: string; value: InfoPayload }>, proposal: number, title: string, render: (p: InfoPayload) => string) => {
     const v = decide<InfoPayload>(s, { kind: 'info', seatId: seat.id, role, title, options: opts, proposal });
@@ -390,7 +391,7 @@ const resolveStep = (s: GameState, seat: Seat, role: RoleId, data: StepData): bo
     case 'spy': {
       tell(s, seat.id, 'Tu consultes le Grimoire.', {
         kind: 'grimoire',
-        seats: s.seats.map(x => ({ id: x.id, role: x.role, alive: x.alive, poisoned: isPoisoned(s, x.id), drunk: x.role === 'drunk' })),
+        seats: s.seats.map(x => ({ id: x.id, role: x.role, alive: x.alive, isPoisoned: isPoisoned(s, x.id), isDrunk: x.role === 'drunk' })),
       }, role);
       return true;
     }
@@ -450,7 +451,7 @@ const resolveStep = (s: GameState, seat: Seat, role: RoleId, data: StepData): bo
       combos.forEach(c => values.add(c.filter(Boolean).length));
       const truth = nb.filter(x => x.alignment === 'evil').length;
       const pool = impaired ? Array.from({ length: nb.length + 1 }, (_, i) => i) : [...values].sort();
-      const opts = pool.map(v => ({ label: `${v}`, value: { kind: 'number', value: v } as InfoPayload }));
+      const opts = pool.map(v => ({ label: `${v}`, value: { kind: 'number', value: v, players: nb.map(x => x.id) } as InfoPayload }));
       const prop = impaired ? Math.max(0, pool.findIndex(v => v !== truth)) : Math.max(0, pool.indexOf(truth));
       return deliver(opts, prop, 'Information pour Empathe', p => `Parmi tes voisins vivants (${nb.map(x => x.name).join(' et ')}), ${(p as { value: number }).value} ${(p as { value: number }).value > 1 ? 'sont maléfiques' : 'est maléfique'}.`);
     }
@@ -472,7 +473,7 @@ const resolveStep = (s: GameState, seat: Seat, role: RoleId, data: StepData): bo
       let pool: RoleId[] = [t.role!];
       if (t.role === 'spy') pool = [...pool, ...shuffle(s, script.roles.filter(r => alignmentOfTeam(ROLES[r].team) === 'good')).slice(0, 4)];
       if (t.role === 'recluse') pool = [...pool, ...script.roles.filter(r => ['minion', 'demon'].includes(ROLES[r].team))];
-      if (impaired) pool = shuffle(s, script.roles.filter(r => r !== t.role)).slice(0, 5);
+      if (impaired) pool = shuffle(s, script.roles.filter(r => r !== t.role && !(seat.role === 'drunk' && r === 'drunk'))).slice(0, 5);
       const opts = pool.map(r => ({ label: ROLES[r].name, value: { kind: 'role-of', player: t.id, role: r } as InfoPayload }));
       return deliver(opts, 0, `Information pour ${ROLES[role].name}`,
         p => `${role === 'undertaker' ? 'Le joueur exécuté, ' : ''}${t.name}${role === 'undertaker' ? ',' : ''} est ${roleLabel((p as { role: RoleId }).role)}.`);
