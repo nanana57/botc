@@ -38,11 +38,27 @@ Les tests couvrent :
 - **serveur** : WebSocket réel, permissions, reprise de session, persistance après redémarrage ;
 - **parties complètes** entre bots.
 
-Pour simuler une partie accélérée entre bots :
+Pour simuler une partie accélérée entre bots (transcription complète dans `simulations/`) :
 
 ```powershell
-npm run simulate -- 9 7
+npm run simulate -- 10 203
 ```
+
+Avec un joueur humain simulé :
+
+```powershell
+npm run simulate -- 8 301 humain
+```
+
+Une simulation commentée (une journée et une nuit complètes) est présentée dans [docs/SIMULATION.md](docs/SIMULATION.md).
+
+## Trois façons de jouer
+
+À l'accueil, en fondant un village :
+
+- **Je joue** (mode A) : tu t'assieds parmi les joueurs, les bots complètent la table, le Conteur automatique mène la partie.
+- **Je conte** (mode B) : tu tiens le Grimoire ; humains et bots jouent ensemble.
+- **J'observe** (mode C) : une partie entière entre bots, menée par le Conteur automatique. Tu suis le Grimoire, la place et l'onglet « Pensées » (raisonnements internes des bots).
 
 ## Ce qui fonctionne aujourd'hui
 
@@ -51,7 +67,7 @@ npm run simulate -- 9 7
 - Script **Trouble Brewing complet** (22 rôles), de 5 à 15 joueurs.
 - Partie jouable : actions de nuit, carnet secret, place publique, nominations, plaidoiries, aiguille de vote, votes fantômes, Pourfendeur, exécutions, victoire.
 - Grimoire du Conteur humain : rôles, marqueurs (poison, protection, Ivrogne, leurre, Maître), ordre de réveil, décisions limitées aux options légales, historique des votes, journal secret, messages privés, activité des bots.
-- Bots : 10 personnalités qui pèsent sur les décisions, raisonnement par mondes possibles, bluffs et fausses infos cohérentes, défense et accusations motivées.
+- Bots autonomes : ils lancent la discussion, se répondent, se contredisent, demandent des comptes, cherchent du soutien, forment des alliances, changent d'avis et de vote, nomment d'eux-mêmes. Raisonnement par mondes possibles, d'une qualité inégale selon la personnalité. Bluffs et fausses infos cohérents dans le camp du Mal.
 - Interface adaptée au mobile.
 
 ## Pas encore fait

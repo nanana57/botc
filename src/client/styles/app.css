@@ -25,7 +25,10 @@
 .home-tab { background: none; border: 0; padding: 1rem 0.5rem 0.8rem; cursor: pointer; font-family: var(--font-title); letter-spacing: 0.08em; color: var(--ash); border-bottom: 2px solid transparent; }
 .home-tab[aria-selected='true'] { color: var(--parchment); border-bottom-color: var(--candle); }
 .home-form { display: grid; gap: 1rem; }
-.mode-pick { border: 0; padding: 0; margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
+.mode-pick { border: 0; padding: 0; margin: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.45rem; min-width: 0; }
+.mode { min-width: 0; grid-template-columns: 6.2rem minmax(0, 1fr); align-items: baseline; column-gap: 0.6rem; padding: 0.6rem 0.8rem; }
+.mode .small { font-size: 0.8rem; line-height: 1.35; }
+.home-card { min-width: 0; }
 .mode { position: relative; display: grid; gap: 0.25rem; padding: 0.8rem; border: 1px solid var(--line-strong); border-radius: var(--r-sm); cursor: pointer; background: rgba(0, 0, 0, 0.25); transition: border-color 200ms, background 200ms; }
 .mode input { position: absolute; opacity: 0; }
 .mode.on { border-color: var(--candle); background: var(--candle-soft); }
@@ -194,6 +197,8 @@
 .msg.st .msg-text { font-family: var(--font-display); font-style: italic; color: var(--bone); }
 .msg.mine .msg-from { color: var(--verdigris); }
 .msg-bot { opacity: 0.6; }
+.msg-to { font-family: var(--font-body); letter-spacing: 0; color: var(--ash); font-size: 0.74rem; margin-left: 0.3rem; }
+.msg.reply { padding-left: 0.6rem; border-left: 1px solid var(--line-strong); }
 .chat-form { display: grid; grid-template-columns: 1fr auto; gap: 0.5rem; padding: 0.7rem; border-top: 1px solid var(--line); }
 
 .chronicle { padding: 0.8rem 1rem; }
@@ -241,7 +246,7 @@
 }
 @media (max-width: 560px) {
   .home-how { grid-template-columns: 1fr; }
-  .mode-pick { grid-template-columns: 1fr; }
+  .mode { grid-template-columns: 1fr; }
   .traits { grid-template-columns: 1fr; }
   .plate-role { display: none; }
   .bubble { max-width: 160px; font-size: 0.72rem; }

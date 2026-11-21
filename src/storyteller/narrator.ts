@@ -34,8 +34,10 @@ export const narrate = (s: GameState, e: PublicEvent): string | null => {
 export const PACE = {
   botNightThink: [1200, 2800] as const,
   defenseHuman: 18000,
-  defenseBot: 9000,
+  defenseBot: 15000,
   voteStep: 1300,
   afterVirgin: 6000,
-  botGap: 3200,
+  botGap: 2600,
+  /** Silence aléatoire supplémentaire entre deux interventions de bots (ms). */
+  botGapJitter: 4500,
 };

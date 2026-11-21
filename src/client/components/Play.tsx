@@ -171,7 +171,7 @@ export const Play = ({ game }: { game: Game }) => {
                 <Notebook messages={me.messages} />
               </div>
             )}
-            {tab === 'place' && <Chat messages={v.chat.filter(m => m.channel === 'public')} meId={me.seatId} onSend={text => game.send({ t: 'chat', text })} disabled={v.phase === 'night' ? 'La nuit, le village se tait.' : false} />}
+            {tab === 'place' && <Chat nameOf={id => name(id)} messages={v.chat.filter(m => m.channel === 'public')} meId={me.seatId} onSend={text => game.send({ t: 'chat', text })} disabled={v.phase === 'night' ? 'La nuit, le village se tait.' : false} />}
             {tab === 'chronique' && <Chronicle events={v.publicLog} />}
             {tab === 'conteur' && <Chat messages={v.chat.filter(m => m.channel === 'storyteller')} meId={me.seatId} onSend={text => game.send({ t: 'chat', text, channel: 'storyteller' })} placeholder="Écrire en secret au Conteur…" />}
           </div>

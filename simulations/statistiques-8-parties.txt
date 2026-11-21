@@ -1,0 +1,29 @@
+messages de bots                   1119
+réponses à un autre bot            577
+intention:defend                   179
+intention:accuse                   175
+intention:agree                    140
+intention:react-defense            71
+intention:claim                    70
+intention:contradict               70
+intention:nominate                 57
+nominations par des bots           57
+intention:question                 50
+intention:ask-support              46
+intention:ask-why                  36
+intention:explain                  36
+changements de vote                36
+jours joués                        36
+intention:trust                    35
+intention:plan                     34
+intention:disagree                 26
+intention:answer-support           26
+intention:hand-change              23
+intention:hypothesis               16
+intention:ally                     15
+défenses jugées convaincantes      10
+intention:deflect                  7
+intention:info                     5
+intention:confirm                  2
+
+Victoires : Bien 4 · Mal 4

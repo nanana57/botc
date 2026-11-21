@@ -743,7 +743,7 @@ export const slay = (s: GameState, shooterId: string, targetId: string) => {
 // Messagerie
 // ---------------------------------------------------------------------------
 
-export const addChat = (s: GameState, m: Omit<ChatMessage, 'id' | 'ts' | 'at'> & { claim?: SpeechClaim }) => {
+export const addChat = (s: GameState, m: Omit<ChatMessage, 'id' | 'ts' | 'at'> & { claim?: SpeechClaim; ts?: number }) => {
   const text = m.text.trim().slice(0, 400);
   if (!text) fail('Message vide.');
   if (m.channel === 'public' && m.fromId !== 'storyteller') {
@@ -751,7 +751,7 @@ export const addChat = (s: GameState, m: Omit<ChatMessage, 'id' | 'ts' | 'at'> &
     if (!seat) fail('Joueur inconnu.');
     if (s.phase === 'night') fail('La nuit, le village se tait. Tu peux écrire au Conteur.');
   }
-  const msg: ChatMessage = { ...m, text, id: uid('msg'), ts: Date.now(), at: tag(s) };
+  const msg: ChatMessage = { ...m, text, id: uid('msg'), ts: m.ts ?? Date.now(), at: tag(s) };
   s.chat.push(msg);
   if (s.chat.length > 800) s.chat.splice(0, s.chat.length - 800);
   return msg;

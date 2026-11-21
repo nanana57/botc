@@ -66,6 +66,12 @@ export interface ChatMessage {
   /** Sémantique publique extraite (revendication, accusation…) — utilisable par les bots. */
   claim?: SpeechClaim;
   bot?: boolean;
+  /** Message auquel celui-ci répond (fil de conversation). */
+  replyTo?: string;
+  /** Joueur interpellé. */
+  to?: string;
+  /** Nature de l'intervention (accusation, réponse, contradiction…), publique. */
+  intent?: string;
 }
 
 /** Sens public d'une déclaration (ce que le joueur affirme). */
@@ -76,6 +82,14 @@ export interface SpeechClaim {
   defend?: string;
   trust?: string;
   question?: string;
+  /** L'accusation est motivée (raison énoncée). */
+  because?: string;
+  /** Demande de soutien pour nommer ce joueur. */
+  support?: string;
+  /** Position sur le message auquel on répond. */
+  stance?: 'agree' | 'disagree';
+  /** Hypothèse : ces joueurs seraient complices. */
+  pair?: [string, string];
 }
 
 export interface VoteRecord {

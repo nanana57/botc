@@ -43,6 +43,30 @@ Chaque profil est un vecteur de 11 traits. Effets dans le code :
 - **Jour de révélation** : révèle son rôle d'emblée, ou tard.
 - **Parole** : fréquence des prises de parole.
 
+## Conversation autonome (couche sociale)
+
+Chaque message public porte un **sens structuré** (revendication, info, accusation motivée ou non, confiance, demande de soutien, hypothèse…), une **cible** (`to`) et le **message auquel il répond** (`replyTo`). Les messages humains reçoivent le même traitement par analyse du texte. À chaque instant, un bot considère deux familles d'interventions :
+
+- **Proactives** : se révéler, partager une nouvelle info, accuser avec un motif (en citant ceux qui pensent pareil), nommer, proposer un plan, interroger un silencieux, faire circuler une hypothèse de complicité (paire la plus probable dans ses mondes), se rétracter ou réorienter ses soupçons, tirer (Pourfendeur).
+- **Réactives** (fil de conversation) : répondre « pourquoi ? » puis expliquer, approuver ou contester une accusation, contredire qui revendique son rôle ou le met en cause, confirmer une info juste, réagir à la défense d'un accusé (et parfois être convaincu, ce qui baisse réellement sa suspicion), répondre à une demande de soutien, proposer une alliance.
+
+Le serveur choisit à chaque instant l'intervention la plus urgente de toute la table. Les **silences** sont naturels : délais aléatoires entre deux prises de parole, parole limitée chaque jour selon le trait *parole*, morts beaucoup moins bavards.
+
+**Raisonnement imparfait** : un bot ne remarque chaque indice public qu'avec une probabilité de 50 % + 50 % × *analyse*. Le tirage est stable, donc ses erreurs restent cohérentes d'un instant à l'autre. Les bots peu analytiques donnent des raisons d'intuition (« je le sens mal ») et peuvent soupçonner un innocent, voire un mort.
+
+**Votes** : à l'ouverture, chaque bot forme un avis personnel sans voir les mains des autres. Quand l'aiguille l'atteint, il revoit sa position : pression sociale proportionnelle au *suivisme*, abstention prudente si la majorité est déjà acquise, lâchage d'un allié condamné pour l'opportuniste du Mal.
+
+**Démon** : il retient les victimes qui ont survécu à ses attaques (Soldat ou joueur protégé probable) et les évite ensuite.
+
+## Traces et simulations
+
+- `Room.trace` enregistre tout : paroles (avec intention et réponse), réveils et choix de nuit avec leur justification interne, informations secrètes livrées, décisions du Conteur, intentions et changements de vote, photographie des croyances de chaque bot à l'aube. Le tout est persisté avec le salon.
+- L'onglet **Pensées** du Grimoire affiche ces raisonnements en direct au Conteur ou à l'observateur, jamais aux joueurs.
+- `npm run simulate -- <joueurs> <graine> [humain]` écrit une transcription dans `simulations/`. `npx tsx scripts/stats.ts` mesure les comportements sur plusieurs parties.
+- Les parties sont **reproductibles** : le hasard du rythme (délais, silences) est lui aussi tiré d'une graine.
+
+Voir `docs/SIMULATION.md` pour une journée et une nuit commentées.
+
 ## Stratégies du Mal
 
 - **Démon** : bluffe à partir de ses 3 rôles. Il tue en priorité les rôles d'information revendiqués et ceux qui accusent ses alliés. Il évite un Soldat déclaré si le bot est prudent. Il se sacrifie (transmission) s'il est démasqué et a un Sbire vivant.
@@ -65,4 +89,4 @@ Le LLM ne sert qu'à **reformuler**. La reformulation est rejetée si un nom, un
 - Les gabarits restent reconnaissables sur une longue partie. Le LLM améliore nettement le naturel.
 - La compréhension des messages humains se fait par mots-clés (revendication, info chiffrée, accusation, question). Une phrase subtile peut échapper. Une extraction par LLM optionnelle est prévue.
 - Pas encore de leçons entre parties (la v1 en stockait sous forme de texte libre). Prévu sous forme de statistiques par joueur humain : tendances de vote, fiabilité des revendications.
-- Les bots ne mènent pas encore de conversations privées.
+- Les bots ne mènent pas encore de conversations privées, et le Mal n'a pas de canal secret pour se concerter (l'Empoisonneur et le Démon visent parfois la même cible).

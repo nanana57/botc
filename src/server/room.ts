@@ -10,13 +10,13 @@ import { playerView, spectatorView, storytellerView } from '../engine/views';
 import type { GameSettings, GameState, PlayerView } from '../shared/types';
 import { BotBrain } from '../ai/brain';
 import { BOT_NAMES, PERSONAS } from '../ai/personalities';
-import { buildRealizePrompt, claimOf, renderTemplate, validateRealization, type Intent } from '../ai/speech';
+import { buildRealizePrompt, claimOf, renderTemplate, threadOf, validateRealization, type Intent } from '../ai/speech';
 import { parseHumanMessage } from '../ai/parse';
 import type { LlmGateway } from '../ai/providers';
 import { narrate, PACE, STORYTELLER_NAME } from '../storyteller/narrator';
 import { ROLES } from '../shared/roles';
 
-export interface Grant { seatId?: string; storyteller?: boolean; host?: boolean; name: string }
+export interface Grant { seatId?: string; storyteller?: boolean; host?: boolean; observer?: boolean; name: string }
 
 export type ClientMsg =
   | { t: 'addBot'; persona?: string; name?: string }
@@ -36,6 +36,9 @@ export type ClientMsg =
 
 export interface RoomClient { grant: Grant; send: (msg: unknown) => void }
 
+/** Trace d'analyse : tout ce qui se passe, y compris les raisonnements internes des bots. */
+export interface TraceEvent { t: number; at: string; kind: string; actor?: string; text: string; data?: unknown }
+
 export interface AiLogEntry { ts: number; seat: string; kind: string; text: string; llm?: boolean; ms?: number; ok?: boolean }
 
 const token = () => randomBytes(18).toString('base64url');
@@ -46,6 +49,15 @@ export class Room {
   brains = new Map<string, BotBrain>();
   clients = new Set<RoomClient>();
   aiLog: AiLogEntry[] = [];
+  trace: TraceEvent[] = [];
+  private tracedPub = 0;
+  private tracedGrim = 0;
+  private seenPriv: Record<string, number> = {};
+  private voteKey = '';
+  private gapJitter = 0;
+  /** Hasard du rythme (délais, silences), à graine : une même graine rejoue la même partie. */
+  private paceRng = 1;
+  private rand() { this.paceRng = (Math.imul(this.paceRng ^ (this.paceRng >>> 15), 2246822519) + 0x9e3779b9) >>> 0; return this.paceRng / 4294967296; }
   llmCallsThisGame = 0;
   botsPaused = false;
   private botBusy = false;
@@ -63,6 +75,7 @@ export class Room {
 
   constructor(id: string, settings: Partial<GameSettings>, public gateway: LlmGateway | null, public llmBudget = 300) {
     this.state = E.createGame(id, settings);
+    this.paceRng = (this.state.rng ^ 0x5bd1e995) >>> 0;
   }
 
   get id() { return this.state.id; }
@@ -73,7 +86,7 @@ export class Room {
   grantOf(t: string): Grant | undefined { return this.tokens[t]; }
 
   join(name: string): { token: string; seatId: string } {
-    const seatId = `s_${randomBytes(5).toString('hex')}`;
+    const seatId = `s_${Math.floor(this.rand() * 0xffffffffff).toString(16)}`;
     E.addSeat(this.state, { id: seatId, name, isBot: false });
     const tk = this.issue({ seatId, name });
     return { token: tk, seatId };
@@ -83,7 +96,7 @@ export class Room {
     const used = new Set(this.state.seats.map(s => s.name));
     const botName = name?.trim() || BOT_NAMES.find(n => !used.has(n)) || `Bot ${this.state.seats.length + 1}`;
     const p = PERSONAS.find(x => x.id === persona) ?? PERSONAS[this.state.seats.filter(s => s.isBot).length % PERSONAS.length];
-    const seatId = `b_${randomBytes(5).toString('hex')}`;
+    const seatId = `b_${Math.floor(this.rand() * 0xffffffffff).toString(16)}`;
     E.addSeat(this.state, { id: seatId, name: botName, isBot: true, persona: p.id });
     this.brains.set(seatId, new BotBrain(seatId, p.id, this.state.rng));
   }
@@ -98,7 +111,7 @@ export class Room {
   }
 
   viewFor(grant: Grant) {
-    if (grant.storyteller) return { ...storytellerView(this.state), aiLog: this.aiLog.slice(0, 80), ai: this.aiStatus() };
+    if (grant.storyteller) return { ...storytellerView(this.state), aiLog: this.aiLog.slice(0, 80), ai: this.aiStatus(), observer: !!grant.observer, trace: this.trace.slice(-300) };
     if (grant.seatId && this.state.seats.some(s => s.id === grant.seatId)) return playerView(this.state, grant.seatId);
     return spectatorView(this.state);
   }
@@ -137,16 +150,17 @@ export class Room {
       case 'start': need(isHost, "Seul l'hôte lance la partie."); E.startGame(s); this.llmCallsThisGame = 0; break;
       case 'chat': {
         if (grant.storyteller) {
-          if (m.channel === 'storyteller' && m.seatId) E.addChat(s, { fromId: 'storyteller', fromName: STORYTELLER_NAME, text: m.text, channel: 'storyteller', seatId: m.seatId });
-          else E.addChat(s, { fromId: 'storyteller', fromName: STORYTELLER_NAME, text: m.text, channel: 'public' });
+          if (m.channel === 'storyteller' && m.seatId) E.addChat(s, { fromId: 'storyteller', fromName: STORYTELLER_NAME, text: m.text, channel: 'storyteller', seatId: m.seatId, ts: this.clock() });
+          else E.addChat(s, { fromId: 'storyteller', fromName: STORYTELLER_NAME, text: m.text, channel: 'public', ts: this.clock() });
           break;
         }
         need(!!seat, 'Seuls les joueurs assis peuvent parler.');
         const st = E.seatById(s, seat)!;
-        if (m.channel === 'storyteller') { E.addChat(s, { fromId: seat!, fromName: st.name, text: m.text, channel: 'storyteller', seatId: seat }); break; }
+        if (m.channel === 'storyteller') { E.addChat(s, { fromId: seat!, fromName: st.name, text: m.text, channel: 'storyteller', seatId: seat, ts: this.clock() }); break; }
         const nb = E.aliveNeighbours(s, seat!);
         const claim = parseHumanMessage(m.text, playerView(s, seat!).seats, seat!, nb);
-        E.addChat(s, { fromId: seat!, fromName: st.name, text: m.text, channel: 'public', claim });
+        const msg = E.addChat(s, { fromId: seat!, fromName: st.name, text: m.text, channel: 'public', claim, ts: this.clock() });
+        this.tr('parole', st.name, m.text, { humain: true, sens: claim, id: msg.id });
         break;
       }
       case 'night': need(!!seat, 'Réservé aux joueurs.'); E.submitNightChoice(s, seat!, m.targets); break;
@@ -177,6 +191,7 @@ export class Room {
     if (!this.dirty) return;
     this.dirty = false;
     this.narrate();
+    this.captureTrace();
     for (const c of this.clients) { try { c.send({ t: 'view', view: this.viewFor(c.grant) }); } catch { /* client fermé */ } }
     this.onChange?.(this);
   }
@@ -187,7 +202,48 @@ export class Room {
       this.narrated.add(e.id);
       if (this.state.settings.storyteller !== 'auto') continue;
       const line = narrate(this.state, e);
-      if (line) { try { E.addChat(this.state, { fromId: 'storyteller', fromName: STORYTELLER_NAME, text: line, channel: 'public' }); } catch { /* nuit */ } }
+      if (line) { try { E.addChat(this.state, { fromId: 'storyteller', fromName: STORYTELLER_NAME, text: line, channel: 'public', ts: this.clock() }); } catch { /* nuit */ } }
+    }
+  }
+
+  // ---------------------------------------------------------------- traces
+
+  tr(kind: string, actor: string | undefined, text: string, data?: unknown, at?: string) {
+    this.trace.push({ t: this.clock(), at: at ?? E.tag(this.state), kind, actor, text, data });
+    if (this.trace.length > 6000) this.trace.splice(0, this.trace.length - 6000);
+  }
+
+  /** Événements publics, décisions du Conteur et informations secrètes livrées. */
+  private captureTrace() {
+    const s = this.state;
+    for (; this.tracedPub < s.publicLog.length; this.tracedPub++) { const e = s.publicLog[this.tracedPub]; this.tr(`public:${e.kind}`, undefined, e.text, undefined, e.at); }
+    for (; this.tracedGrim < s.grimoireLog.length; this.tracedGrim++) this.tr('conteur', STORYTELLER_NAME, s.grimoireLog[this.tracedGrim].text, undefined, s.grimoireLog[this.tracedGrim].at);
+    for (const seat of s.seats) {
+      const log = s.privateLog[seat.id] || [];
+      const from = this.seenPriv[seat.id] || 0;
+      for (let i = from; i < log.length; i++) {
+        const m = log[i];
+        this.tr('info-secrete', seat.name, m.text, { source: m.source, info: m.info }, m.at);
+        // Dialogue visible dans le canal privé Conteur <-> bot (Conteur et spectateurs du Grimoire)
+        if (seat.isBot && i > 0) { try { E.addChat(s, { fromId: 'storyteller', fromName: STORYTELLER_NAME, text: m.text, channel: 'storyteller', seatId: seat.id, ts: this.clock() }); } catch { /* */ } }
+      }
+      this.seenPriv[seat.id] = log.length;
+    }
+  }
+
+  /** Photographie des croyances de chaque bot (au lever du jour). */
+  private snapshotBeliefs() {
+    const s = this.state;
+    for (const [id, b] of this.brains) {
+      const seat = E.seatById(s, id);
+      if (!seat) continue;
+      const v = playerView(s, id);
+      b.observe(v);
+      const { b: bel, pub } = b.beliefs(v);
+      const src = seat.alignment === 'evil' ? pub : bel;
+      const top = s.seats.filter(x => x.id !== id).sort((x, y) => src.pEvil[y.id] - src.pEvil[x.id]).slice(0, 3)
+        .map(x => `${x.name} ${Math.round(src.pEvil[x.id] * 100)} %`);
+      this.tr('croyances', seat.name, `${seat.alignment === 'evil' ? 'Ce que le village doit penser' : 'Suspects'} : ${top.join(', ')}`, { indices: `${bel.noticed}/${bel.available}`, persona: seat.persona });
     }
   }
 
@@ -196,8 +252,9 @@ export class Room {
   /** Appelé régulièrement par le serveur. */
   tick(now = this.clock()) {
     const s = this.state;
+    this.captureTrace();
     try {
-      for (const [id, b] of this.brains) if (s.phase !== 'lobby' && E.seatById(s, id)) b.observe(playerView(s, id));
+      for (const [id, b] of this.brains) if (s.phase !== 'lobby' && E.seatById(s, id)) b.observe(playerView(s, id), now);
       if (s.phase === 'night') this.tickNight(now);
       else if (s.phase === 'day') this.tickDay(now);
     } catch (e) {
@@ -212,15 +269,18 @@ export class Room {
     const a = s.night.awaiting;
     if (!a) return;
     const key = `${s.day}:${s.night.cursor}:${a.seatId}`;
-    if (key !== this.awaitKey) { this.awaitKey = key; this.awaitSince = now; }
+    if (key !== this.awaitKey) { this.awaitKey = key; this.awaitSince = now; this.tr('nuit:reveil', STORYTELLER_NAME, `réveille ${E.seatById(s, a.seatId)?.name} (${ROLES[a.role].name}) : « ${a.prompt} »`); }
     const seat = E.seatById(s, a.seatId)!;
     if (seat.isBot) {
-      if (!this.nightThinkUntil) { this.nightThinkUntil = now + PACE.botNightThink[0] + Math.random() * (PACE.botNightThink[1] - PACE.botNightThink[0]); return; }
+      if (!this.nightThinkUntil) { this.nightThinkUntil = now + PACE.botNightThink[0] + this.rand() * (PACE.botNightThink[1] - PACE.botNightThink[0]); return; }
       if (now < this.nightThinkUntil) return;
       this.nightThinkUntil = 0;
       const brain = this.brains.get(seat.id)!;
       const targets = brain.nightChoice(playerView(s, seat.id));
-      try { E.submitNightChoice(s, seat.id, targets); this.log(seat.name, 'nuit', `${ROLES[a.role].name} → ${targets.map(t => E.seatById(s, t)?.name).join(', ')}`); }
+      const names = targets.map(t => E.seatById(s, t)?.name).join(' et ');
+      this.tr('nuit:choix', seat.name, `(${ROLES[a.role].name}) désigne ${names}`, { raisonnement: brain.rationale });
+      try { E.addChat(s, { fromId: seat.id, fromName: seat.name, text: `Je désigne ${names}.`, channel: 'storyteller', seatId: seat.id, ts: now }); } catch { /* */ }
+      try { E.submitNightChoice(s, seat.id, targets); this.log(seat.name, 'nuit', `${ROLES[a.role].name} → ${names} — ${brain.rationale}`); }
       catch (err) { this.log(seat.name, 'nuit', `choix refusé par le moteur (${(err as Error).message}) : choix automatique`); E.submitNightChoice(s, seat.id, E.autoNightChoice(s)); }
       this.touch();
       return;
@@ -235,7 +295,7 @@ export class Room {
   private tickDay(now: number) {
     const s = this.state;
     const auto = s.settings.storyteller === 'auto';
-    if (this.dayKey !== s.day) { this.dayKey = s.day; if (auto) s.dayState.endsAt = now + s.settings.dayDuration * 1000; this.touch(); }
+    if (this.dayKey !== s.day) { this.dayKey = s.day; if (auto) s.dayState.endsAt = now + s.settings.dayDuration * 1000; this.snapshotBeliefs(); this.touch(); }
     const nm = s.dayState.nomination;
     // Débat de la nomination puis ouverture du vote
     if (nm && nm.stage === 'defense' && auto) {
@@ -244,16 +304,43 @@ export class Room {
       if (now - started > (nomineeBot ? PACE.defenseBot : PACE.defenseHuman)) { E.openVoting(s); this.touch(); this.nominationStarted = undefined; }
     }
     if (!nm || nm.stage !== 'defense') this.nominationStarted = undefined;
-    // L'aiguille tourne : les bots décident au moment où elle les atteint
+    // Ouverture du vote : chaque bot annonce son intention (main levée ou non)
+    if (nm && nm.stage === 'voting') {
+      const vk = `${s.day}:${nm.nominatorId}:${nm.nomineeId}`;
+      if (this.voteKey !== vk) {
+        this.voteKey = vk;
+        this.lastVoteStep = now;
+        for (const voter of nm.order) {
+          const vs = E.seatById(s, voter);
+          if (!vs?.isBot) continue;
+          const b = this.brains.get(voter)!;
+          const yes = b.decideVote(playerView(s, voter), true);
+          try { E.setHand(s, voter, yes); } catch { /* */ }
+          this.tr('vote:intention', vs.name, yes ? 'lève la main' : 'garde la main baissée', { raisonnement: b.rationale });
+        }
+        this.touch();
+        return;
+      }
+    }
+    // L'aiguille tourne : chaque bot confirme ou change son vote quand elle l'atteint
     if (nm && nm.stage === 'voting' && now - this.lastVoteStep > PACE.voteStep) {
       this.lastVoteStep = now;
       const voter = nm.order[nm.cursor];
       const vs = E.seatById(s, voter);
       if (vs?.isBot) {
-        const yes = this.brains.get(voter)!.decideVote(playerView(s, voter));
-        try { E.setHand(s, voter, yes); } catch { /* vote fantôme épuisé */ }
+        const b = this.brains.get(voter)!;
+        const before = !!nm.hands[voter];
+        const yes = b.decideVote(playerView(s, voter));
+        if (yes !== before) {
+          try { E.setHand(s, voter, yes); } catch { /* vote fantôme épuisé */ }
+          this.tr('vote:changement', vs.name, yes ? 'lève finalement la main' : 'baisse finalement la main', { raisonnement: b.rationale });
+          if (b.persona.traits.talk > 0.45) void this.say(voter, { kind: 'hand-change', target: nm.nomineeId, yes });
+        }
       }
-      E.lockNextVote(s);
+      const done = E.lockNextVote(s);
+      const votes = done ? s.voteHistory[s.voteHistory.length - 1]?.votes : s.dayState.nomination?.votes;
+      const locked = votes?.find(v => v.voterId === voter);
+      if (locked) this.tr('vote', vs?.name, locked.yes ? `vote POUR${locked.ghost ? ' (vote fantôme)' : ''}${locked.counted ? '' : ' (ne compte pas)'}` : 'ne vote pas');
       this.touch();
       return;
     }
@@ -270,7 +357,7 @@ export class Room {
     }
     if (!s.dayState.executionDone) this.virginAt = undefined;
     // Les bots prennent la parole, nomment, tirent
-    if (this.botsPaused || this.botBusy || now - this.lastBotSpeech < PACE.botGap) return;
+    if (this.botsPaused || this.botBusy || now - this.lastBotSpeech < PACE.botGap + this.gapJitter) return;
     if (nm && nm.stage === 'voting') return;
     let best: { id: string; p: NonNullable<ReturnType<BotBrain['think']>> } | null = null;
     for (const [id, b] of this.brains) {
@@ -285,6 +372,7 @@ export class Room {
     try {
       if (p.kind === 'nominate') {
         E.nominate(s, id, p.target!);
+        this.tr('nomination', seat.name, `nomme ${E.seatById(s, p.target!)?.name}`, { motif: (p.intent as { reason?: { label: string } }).reason?.label });
         brain.didSpeak(p.intent, s.day, now);
         this.lastBotSpeech = now;
         this.log(seat.name, 'nomination', E.seatById(s, p.target!)?.name ?? '');
@@ -328,14 +416,18 @@ export class Room {
         if (ok) text = r.text!.replace(/^["«\s]+|["»\s]+$/g, '');
       }
       if (this.state.phase === 'day' || intent.kind === 'defend') {
-        E.addChat(this.state, { fromId: seatId, fromName: seat.name, text, channel: 'public', claim: claimOf(intent, seatId), bot: true });
+        const th = threadOf(intent);
+        const msg = E.addChat(this.state, { fromId: seatId, fromName: seat.name, text, channel: 'public', claim: claimOf(intent, seatId), bot: true, intent: intent.kind, ...th, ts: this.clock() });
         this.log(seat.name, intent.kind, text, llm, ms, ok);
+        const replyMsg = th.replyTo ? this.state.chat.find(c => c.id === th.replyTo) : undefined;
+        this.tr('parole', seat.name, text, { intention: intent.kind, en_reponse_a: replyMsg ? `${replyMsg.fromName} : « ${replyMsg.text} »` : undefined, id: msg.id, persona: seat.persona, llm: llm ? ok : undefined });
       }
     } catch (e) {
       this.log(seat.name, 'erreur', String((e as Error).message));
     } finally {
       this.botBusy = false;
       this.lastBotSpeech = this.clock();
+      this.gapJitter = Math.floor(this.rand() * PACE.botGapJitter);
       this.touch();
     }
   }
@@ -347,13 +439,17 @@ export class Room {
 
   // ---------------------------------------------------------------- persistance
 
-  serialize() { return { state: this.state, tokens: this.tokens, llmCallsThisGame: this.llmCallsThisGame }; }
+  serialize() { return { state: this.state, tokens: this.tokens, llmCallsThisGame: this.llmCallsThisGame, trace: this.trace }; }
 
   static restore(data: ReturnType<Room['serialize']>, gateway: LlmGateway | null, budget?: number): Room {
     const r = new Room(data.state.id, data.state.settings, gateway, budget);
     r.state = data.state;
     r.tokens = data.tokens;
     r.llmCallsThisGame = data.llmCallsThisGame || 0;
+    r.trace = data.trace || [];
+    r.tracedPub = r.state.publicLog.length;
+    r.tracedGrim = r.state.grimoireLog.length;
+    r.state.seats.forEach(x => { r.seenPriv[x.id] = (r.state.privateLog[x.id] || []).length; });
     r.state.publicLog.forEach(e => r.narrated.add(e.id));
     r.rebuildBrains();
     return r;

@@ -3,7 +3,7 @@ import type { PlayerView, StorytellerView, PublicSeat, GameState } from '../shar
 
 export interface SpectatorView { role: 'spectator'; gameId: string; version: number; phase: GameState['phase']; day: number; seats: PublicSeat[]; dayState: GameState['dayState']; publicLog: GameState['publicLog']; chat: GameState['chat']; winner: GameState['winner'] }
 export interface AiLogEntry { ts: number; seat: string; kind: string; text: string; llm?: boolean; ms?: number; ok?: boolean }
-export interface StView extends StorytellerView { aiLog: AiLogEntry[]; ai: { gateway: null | { provider: string; model: string; configured: boolean; paused: boolean; calls: number; errors: number; avgMs: number; lastError: string }; llmCallsThisGame: number; budget: number; botsPaused: boolean } }
+export interface StView extends StorytellerView { observer?: boolean; trace?: Array<{ t: number; at: string; kind: string; actor?: string; text: string; data?: unknown }>; aiLog: AiLogEntry[]; ai: { gateway: null | { provider: string; model: string; configured: boolean; paused: boolean; calls: number; errors: number; avgMs: number; lastError: string }; llmCallsThisGame: number; budget: number; botsPaused: boolean } }
 export type View = PlayerView | StView | SpectatorView;
 
 export interface Joined { roomId: string; token: string; seatId: string | null; storyteller: boolean; host: boolean }

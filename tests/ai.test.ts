@@ -116,6 +116,9 @@ describe('Interprétation des messages humains', () => {
   it('repère une accusation par prénom', () => {
     expect(parseHumanMessage('Je soupçonne Cyrielle, elle ment', seats, 'p0')?.accuse).toBe('p2');
   });
+  it('repère une info d’Enquêteur formulée avec un deux-points', () => {
+    expect(parseHumanMessage('Je suis Enquêteur : Bram ou Dov est Femme écarlate.', seats, 'p0')).toMatchObject({ role: 'investigator', info: { kind: 'pair-role', players: ['p1', 'p3'], role: 'scarletwoman' } });
+  });
   it('repère une info de Voyante', () => {
     expect(parseHumanMessage('Je suis la voyante : Bram et Dov, non', seats, 'p0')).toMatchObject({ role: 'fortuneteller', info: { kind: 'yesno', value: false, players: ['p1', 'p3'] } });
   });

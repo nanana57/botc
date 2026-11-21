@@ -44,12 +44,12 @@ export const parseHumanMessage = (text: string, seats: PublicSeat[], fromId: str
   }
   // Lavandière / Bibliothécaire / Enquêteur : « X ou Y est (le|la) R »
   if (role && ['washerwoman', 'librarian', 'investigator'].includes(role) && names.length >= 2) {
-    const r2 = findRoleInText(t.replace(/je suis[^,.;]*/, ''));
+    const r2 = findRoleInText(t.replace(/je suis[^,.;:!?]*/, ''));
     if (r2 && r2 !== role) claim.info = { kind: 'pair-role', players: [names[0], names[1]], role: r2 };
   }
   // Fossoyeur / Gardien des corbeaux : « X était (le|la) R »
   if (role && ['undertaker', 'ravenkeeper'].includes(role) && names.length >= 1) {
-    const r2 = findRoleInText(t.replace(/je suis[^,.;]*/, ''));
+    const r2 = findRoleInText(t.replace(/je suis[^,.;:!?]*/, ''));
     if (r2 && r2 !== role) claim.info = { kind: 'role-of', player: names[0], role: r2 };
   }
   // Accusation / confiance / question

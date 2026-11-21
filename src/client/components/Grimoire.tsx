@@ -11,7 +11,7 @@ export const Grimoire = ({ game }: { game: Game }) => {
   const v = game.view as StView;
   const s: GameState = v.state;
   const now = useNow(1000);
-  const [tab, setTab] = useState<'nuit' | 'jour' | 'journal' | 'place' | 'murmures' | 'ia'>(s.phase === 'night' ? 'nuit' : 'jour');
+  const [tab, setTab] = useState<'nuit' | 'jour' | 'journal' | 'place' | 'murmures' | 'ia' | 'pensees'>(s.phase === 'night' ? 'place' : 'place');
   const [focus, setFocus] = useState<string | null>(null);
   const name = (id?: string | null) => s.seats.find(x => x.id === id)?.name ?? '?';
   const poisonerAlive = s.seats.some(x => x.role === 'poisoner' && x.alive);
@@ -43,7 +43,7 @@ export const Grimoire = ({ game }: { game: Game }) => {
     <main className={`grimoire scene phase-${s.phase}`}>
       <header className="topbar">
         <button className="btn btn-ghost btn-sm" onClick={game.leave}><Icon name="door" /> Quitter</button>
-        <p className="title topbar-title">Grimoire du Conteur <span className="muted">· village {s.id}</span></p>
+        <p className="title topbar-title">{v.observer ? 'Partie automatique — Grimoire' : 'Grimoire du Conteur'} <span className="muted">· village {s.id}</span></p>
         <span className="chip">{s.phase === 'night' ? `Nuit ${s.day}` : s.phase === 'day' ? `Jour ${s.day}` : s.phase === 'ended' ? 'Fin' : 'Lobby'}</span>
       </header>
       <div className="play-grid">
@@ -84,7 +84,7 @@ export const Grimoire = ({ game }: { game: Game }) => {
         <aside className="play-side panel">
           <Tabs value={tab} onChange={setTab} items={[
             { id: 'nuit', label: 'Nuit' }, { id: 'jour', label: 'Votes' }, { id: 'journal', label: 'Journal' },
-            { id: 'place', label: 'Place' }, { id: 'murmures', label: 'Murmures' }, { id: 'ia', label: 'IA' },
+            { id: 'place', label: 'Place' }, { id: 'murmures', label: 'Murmures' }, { id: 'ia', label: 'IA' }, { id: 'pensees', label: 'Pensées' },
           ]} />
           <div className="side-body">
             {tab === 'nuit' && (
@@ -116,7 +116,7 @@ export const Grimoire = ({ game }: { game: Game }) => {
               </div>
             )}
             {tab === 'journal' && <div className="scroll pad grim-log">{[...s.grimoireLog].reverse().map((l, i) => <p key={i} className="small"><span className="title muted">{l.at}</span> {l.text}</p>)}</div>}
-            {tab === 'place' && <Chat messages={s.chat.filter(m => m.channel === 'public')} meId="storyteller" onSend={text => game.send({ t: 'chat', text })} placeholder="Annoncer au village…" />}
+            {tab === 'place' && <Chat nameOf={id => name(id)} messages={s.chat.filter(m => m.channel === 'public')} meId="storyteller" onSend={text => game.send({ t: 'chat', text })} placeholder="Annoncer au village…" />}
             {tab === 'murmures' && (
               <div className="whispers">
                 <select className="select" value={focus ?? ''} onChange={e => setFocus(e.target.value || null)} aria-label="Joueur">
@@ -125,6 +125,14 @@ export const Grimoire = ({ game }: { game: Game }) => {
                 </select>
                 {focus ? <Chat messages={s.chat.filter(m => m.channel === 'storyteller' && m.seatId === focus)} meId="storyteller" onSend={text => game.send({ t: 'chat', text, channel: 'storyteller', seatId: focus })} placeholder={`Murmurer à ${name(focus)}…`} />
                   : <p className="small muted pad">Les messages privés que tu échanges avec un joueur n’apparaissent que pour lui.</p>}
+              </div>
+            )}
+            {tab === 'pensees' && (
+              <div className="scroll pad thoughts">
+                <p className="small muted">Raisonnements internes des bots (jamais visibles des joueurs) : intentions de vote, choix nocturnes et suspects du moment.</p>
+                {[...(v.trace || [])].reverse().filter(e => ['croyances', 'nuit:choix', 'vote:intention', 'vote:changement', 'nomination', 'info-secrete'].includes(e.kind)).slice(0, 120).map((e, i) => (
+                  <p key={i} className={`small thought thought-${e.kind.replace(':', '-')}`}><span className="title muted">{e.at}</span> <strong>{e.actor}</strong> {e.text}{(e.data as { raisonnement?: string } | undefined)?.raisonnement ? <em className="muted"> — {(e.data as { raisonnement: string }).raisonnement}</em> : null}</p>
+                ))}
               </div>
             )}
             {tab === 'ia' && (

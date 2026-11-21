@@ -84,12 +84,13 @@ export const startServer = (opts: ServerOptions) => {
       try { m = JSON.parse(String(raw)); } catch { return err(new RuleError('Message illisible.')); }
       try {
         if (m.t === 'create') {
+          const watch = m.mode === 'watch';
           const mode = m.mode === 'human' ? 'human' : 'auto';
           let id = code(); while (rooms.has(id)) id = code();
           const r = new Room(id, { storyteller: mode, dayDuration: Number(m.dayDuration) || 300 }, gateway, budget);
           wire(r);
           let tk: string;
-          if (mode === 'human') tk = r.issue({ storyteller: true, host: true, name: String(m.name || 'Conteur').slice(0, 24) });
+          if (mode === 'human' || watch) tk = r.issue({ storyteller: true, host: true, observer: watch, name: String(m.name || (watch ? 'Observateur' : 'Conteur')).slice(0, 24) });
           else {
             const j = r.join(String(m.name || '').slice(0, 24));
             tk = j.token;

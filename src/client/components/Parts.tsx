@@ -46,8 +46,8 @@ export const Chronicle = ({ events }: { events: PublicEvent[] }) => {
   );
 };
 
-export const Chat = ({ messages, meId, onSend, disabled, placeholder, nameColor }: {
-  messages: ChatMessage[]; meId?: string | null; onSend: (text: string) => void; disabled?: string | false; placeholder?: string; nameColor?: (id: string) => string | undefined;
+export const Chat = ({ messages, meId, onSend, disabled, placeholder, nameColor, nameOf }: {
+  messages: ChatMessage[]; meId?: string | null; onSend: (text: string) => void; disabled?: string | false; placeholder?: string; nameColor?: (id: string) => string | undefined; nameOf?: (id: string) => string;
 }) => {
   const [text, setText] = useState('');
   const list = useRef<HTMLDivElement>(null);
@@ -61,8 +61,8 @@ export const Chat = ({ messages, meId, onSend, disabled, placeholder, nameColor 
       <div className="chat-list scroll" ref={list} onScroll={e => { const el = e.currentTarget; atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40; }} aria-live="polite">
         {messages.length === 0 && <p className="muted small chat-empty">Le silence pèse sur la place.</p>}
         {messages.map(m => (
-          <p key={m.id} className={`msg ${m.fromId === meId ? 'mine' : ''} ${m.fromId === 'storyteller' ? 'st' : ''}`}>
-            <span className="msg-from" style={{ color: nameColor?.(m.fromId) }}>{m.fromName}{m.bot && <Icon name="bot" size={11} className="msg-bot" />}</span>
+          <p key={m.id} className={`msg ${m.fromId === meId ? 'mine' : ''} ${m.fromId === 'storyteller' ? 'st' : ''} ${m.replyTo ? 'reply' : ''}`}>
+            <span className="msg-from" style={{ color: nameColor?.(m.fromId) }}>{m.fromName}{m.bot && <Icon name="bot" size={11} className="msg-bot" />}{m.to && nameOf && <span className="msg-to">→ {m.to === meId ? 'toi' : nameOf(m.to)}</span>}</span>
             <span className="msg-text">{m.text}</span>
           </p>
         ))}

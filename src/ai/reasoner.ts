@@ -30,7 +30,14 @@ export interface Beliefs {
   /** Observation qui augmente le plus la suspicion envers chaque joueur. */
   topReason: Record<string, Observation | undefined>;
   worlds: number;
+  /** Paire de complices la plus probable (parmi les suspects principaux). */
+  pair?: { a: string; b: string; p: number };
+  /** Indices effectivement remarqués / disponibles. */
+  noticed: number;
+  available: number;
 }
+
+const h32 = (s: string) => { let h = 2166136261; for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619) >>> 0; return h; };
 
 const combos = <T>(arr: T[], k: number): T[][] => {
   if (k === 0) return [[]];
@@ -88,7 +95,7 @@ export const buildObservations = ({ view, mem, traits, publicOnly }: ReasonConte
   const me = view.me.seatId;
   // 1. Mes propres informations (je peux être ivre ou empoisonné : confiance < 1)
   if (!publicOnly) {
-    const tMe = 0.72 + 0.18 * traits.analytic - 0.1 * (1 - traits.trust) * 0;
+    const tMe = 0.72 + 0.18 * traits.analytic;
     for (const m of view.me.messages) {
       if (!m.info || !m.source || ['role-change', 'evil-team', 'demon-intro', 'grimoire', 'text'].includes(m.info.kind)) continue;
       const info = m.info;
@@ -177,7 +184,11 @@ export const reason = (ctx: ReasonContext): Beliefs => {
     }
   }
 
-  const obs = buildObservations(ctx);
+  const all = buildObservations(ctx);
+  // Attention imparfaite : un joueur peu analytique ne remarque pas tous les indices publics.
+  // Le tirage est stable (même bot, même indice → même résultat) : ses erreurs sont cohérentes.
+  const attention = publicOnly ? 1 : 0.5 + 0.5 * ctx.traits.analytic;
+  const obs = all.filter(o => o.kind === 'my-info' || (h32(me + o.label) % 1000) / 1000 < attention);
   const F = worlds.map(w => obs.map(o => Math.max(1e-6, o.f(w.d, w.e))));
   const L = F.map(row => row.reduce((a, b) => a * b, 1));
   const total = L.reduce((a, b) => a + b, 0) || 1;
@@ -190,21 +201,35 @@ export const reason = (ctx: ReasonContext): Beliefs => {
     if (w.d in pDemon) pDemon[w.d] += p;
   });
 
-  // Explication : pour chaque joueur, l'observation dont le retrait fait le plus baisser sa suspicion
+  // Explication : pour chaque joueur, l'observation dont le retrait fait le plus baisser sa suspicion.
+  // Une seule passe par observation : on accumule, pour chaque joueur, sa masse « maléfique » sans cette observation.
   const topReason: Record<string, Observation | undefined> = {};
-  for (const id of seats) {
-    if (id === me && !publicOnly) continue;
-    let best: Observation | undefined;
-    let bestDelta = 0.04;
-    obs.forEach((o, k) => {
-      if (!o.about.includes(id) && o.kind !== 'my-info') return;
-      let tot = 0; let ev = 0;
-      worlds.forEach((w, i) => { const l = L[i] / F[i][k]; tot += l; if (w.e.has(id)) ev += l; });
-      const without = tot ? ev / tot : 0;
-      const delta = pEvil[id] - without;
-      if (delta > bestDelta) { bestDelta = delta; best = o; }
+  const bestDelta: Record<string, number> = {};
+  obs.forEach((o, k) => {
+    const concerned = o.kind === 'my-info' ? seats : o.about;
+    if (!concerned.length) return;
+    let tot = 0;
+    const ev: Record<string, number> = {};
+    worlds.forEach((w, i) => {
+      const l = L[i] / F[i][k];
+      tot += l;
+      w.e.forEach(id => { ev[id] = (ev[id] || 0) + l; });
     });
-    topReason[id] = best;
+    if (!tot) return;
+    for (const id of concerned) {
+      if (id === me && !publicOnly) continue;
+      const delta = pEvil[id] - (ev[id] || 0) / tot;
+      if (delta > (bestDelta[id] ?? 0.04)) { bestDelta[id] = delta; topReason[id] = o; }
+    }
+  });
+
+  // Hypothèse de complicité : paire la plus probable parmi les 5 plus suspects
+  let pair: Beliefs['pair'];
+  const top = seats.filter(id => publicOnly || id !== me).sort((a, b) => pEvil[b] - pEvil[a]).slice(0, 5);
+  for (const [a, b] of combos(top, 2)) {
+    let p = 0;
+    worlds.forEach((w, i) => { if (w.e.has(a) && w.e.has(b)) p += L[i] / total; });
+    if (!pair || p > pair.p) pair = { a, b, p };
   }
-  return { pEvil, pDemon, topReason, worlds: worlds.length };
+  return { pEvil, pDemon, topReason, worlds: worlds.length, pair, noticed: obs.length, available: all.length };
 };
